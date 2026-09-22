@@ -177,6 +177,9 @@ public class PrefsBridge {
             return;
         }
         if (mRemotePrefs == null) {
+            AndroidLog.w(TAG, "Remote prefs not bound yet; " + rKey
+                + " saved locally only. It will sync to hook processes when the service binds."
+                + " Until then hook processes may read stale values.");
             return;
         }
         if (!commitPut(mRemotePrefs, rKey, value, "remote")) {
