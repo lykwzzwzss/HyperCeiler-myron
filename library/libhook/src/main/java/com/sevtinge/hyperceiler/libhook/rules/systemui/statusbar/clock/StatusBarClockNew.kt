@@ -52,7 +52,19 @@ object StatusBarClockNew : BaseHook() {
 
     private val ssRegex by lazy { Regex("(ss|s)") }
 
-    private val secondsFrameCallback = SecondsFrameCallback().initial()
+    /**
+     * 秒针帧回调（惰性持有）。
+     *
+     * Choreographer.getInstance() 绑定调用线程且要求 Looper——若在类静态初始化（<clinit>）里
+     * 创建，热重载的 Binder 线程会抛 IllegalStateException("The current thread must have a looper!")
+     * 并中断整个规则装载（实测：装包热重载后 SystemUIB 后续 hook 全部失效、SystemUI 功能整体静默）。
+     * 因此推迟到首次 registerClock（视图回调，必在主线程）时创建。
+     */
+    private var secondsFrameCallback: SecondsFrameCallback? = null
+
+    /** 仅从主线程（视图回调）调用——Choreographer 绑定创建线程。 */
+    private fun frameCallback(): SecondsFrameCallback =
+        secondsFrameCallback ?: SecondsFrameCallback().initial().also { secondsFrameCallback = it }
 
     private val updateTimeMethodCache = ConcurrentHashMap<Class<*>, Method>()
 
@@ -208,7 +220,7 @@ object StatusBarClockNew : BaseHook() {
     }
 
     override fun init() {
-        registerHotReloadCleanup { secondsFrameCallback.dispose() }
+        registerHotReloadCleanup { secondsFrameCallback?.dispose() }
         registerHotReloadCleanup {
             if (formatExecutorHolder.isInitialized()) {
                 formatExecutorHolder.value.shutdownNow()
@@ -219,7 +231,7 @@ object StatusBarClockNew : BaseHook() {
             ?.let { clock ->
                 runCatching { findMethodInHierarchy(clock.javaClass, "updateTime") }
                     .getOrNull()
-                    ?.let { secondsFrameCallback.registerClock(clock, it) }
+                    ?.let { frameCallback().registerClock(clock, it) }
             }
 
         Constructors.find(statusBarClass)
@@ -270,7 +282,7 @@ object StatusBarClockNew : BaseHook() {
                                 }.getOrNull()!!
                             }
 
-                        secondsFrameCallback.registerClock(miuiClock, updateTimeMethod)
+                        frameCallback().registerClock(miuiClock, updateTimeMethod)
                     }
                 }
             }

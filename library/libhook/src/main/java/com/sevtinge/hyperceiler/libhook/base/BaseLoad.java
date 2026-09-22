@@ -94,6 +94,16 @@ public abstract class BaseLoad {
 
     /** 当前 generation 若存在未初始化成功的规则，则不能安全作为热重载的旧 generation。 */
     public static String getHotReloadBlockReason() {
+        if (isSystemServer()) {
+            // system_server 不参与热重载。实测（2026-09-22，myron / OS4.0.0.31）：装包触发的
+            // 热重载伴随 EzResources 资源跨代迁移，随后 system_server 内任意线程的资源查询在
+            // AssetManager2::FindEntryInternal 踩野指针 SIGSEGV 导致软重启（两例 tombstone，
+            // 触发线程分别为 pre_starting / pool-123-thread，崩溃窗口距装包仅 2~11 秒）。
+            // 因此 system 作用域退回旧版语义：改包后重启作用域生效；其余 UI 进程继续热重载。
+            return "system_server is excluded from hot reload: cross-generation resource " +
+                "migration corrupts the host AssetManager (native SIGSEGV in " +
+                "AssetManager2::FindEntryInternal observed after package update)";
+        }
         List<String> failures;
         synchronized (sGenerationInitializationFailures) {
             if (sGenerationInitializationFailures.isEmpty()) return null;
