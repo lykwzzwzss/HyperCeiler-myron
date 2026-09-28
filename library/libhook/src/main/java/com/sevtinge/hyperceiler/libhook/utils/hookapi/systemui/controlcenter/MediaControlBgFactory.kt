@@ -98,7 +98,17 @@ object MediaControlBgFactory : BaseHook() {
             ?: ColorSchemeClass!!.findFieldOrNull("accent2")
     }
     val enumStyleContent: Any? by lazy {
-        loadClass("com.android.systemui.monet.Style", lpparam.classLoader).findMethod { name("valueOf") }.invoke(null, "CONTENT")
+        // 新版：Google Monet 标准 Variant（ColorScheme 亦以其构造，见 ColorScheme.CONTENT 引用）
+        // 旧版：MIUI 自有 com.android.systemui.monet.Style（新版本已删除该类）
+        runCatching {
+            loadClass("com.google.ux.material.libmonet.dynamiccolor.Variant", lpparam.classLoader)
+                .findMethod { name("valueOf") }.invoke(null, "CONTENT")
+        }.getOrElse {
+            runCatching {
+                loadClass("com.android.systemui.monet.Style", lpparam.classLoader)
+                    .findMethod { name("valueOf") }.invoke(null, "CONTENT")
+            }.getOrNull()
+        }
     }
 
     private val metIconGetBitmap by lazy {

@@ -320,7 +320,18 @@ object CustomBackground : BaseHook() {
                 applyTo.invoke(constraintSet, parent)
             }
         } else {
-            mediaBg = mMediaViewHolder.getMediaViewHolderFieldAs<ImageView>("mediaBg", false) ?: return null
+            mediaBg = mMediaViewHolder.getMediaViewHolderFieldAs<ImageView>("mediaBg", false)?.also {
+                // 通知中心自定义背景同样需要圆角：initNCForOS3 已将系统 updateMediaBackground
+                // 替换为空实现（系统圆角绘制随之丢失），自绘图片若不裁剪则四角变直角。
+                it.outlineProvider = object : ViewOutlineProvider() {
+                    override fun getOutline(p0: View?, p1: Outline?) {
+                        if (p0 == null || p1 == null) return
+                        val cornerRadius = p0.context?.resources?.getDimension(mediaBgRadiusDi) ?: return
+                        p1.setRoundRect(0, 0, p0.width, p0.height, cornerRadius)
+                    }
+                }
+                it.clipToOutline = true
+            } ?: return null
         }
 
         return MiuiMediaViewHolderWrapper(

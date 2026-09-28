@@ -111,11 +111,11 @@ object AmbientLight : BaseHook() {
         }?.getOrNull()
     }
     private val metDrawable2Bitmap by lazy {
-        findClassIfExists("com.miui.utils.DrawableUtils")?.runCatching {
-            declaredMethods.firstOrNull {
-                it.name == "drawable2Bitmap" && it.parameterTypes.contentEquals(arrayOf(Drawable::class.java))
-            }
-        }?.getOrNull()
+        // 实测签名已变为 drawable2Bitmap(Drawable, int, int)（多两个尺寸参数）；
+        // 旧代码要求单参 [Drawable] 导致解析为 null（打点实证 d2b=false → 取色链整体失效）。
+        findClassIfExists("com.miui.utils.DrawableUtils")?.declaredMethods?.firstOrNull {
+            it.name == "drawable2Bitmap" && it.parameterTypes.firstOrNull() == Drawable::class.java
+        }
     }
     private val metAcquireApplicationIcon by lazy {
         findClassIfExists("com.android.systemui.statusbar.notification.utils.NotificationUtil")
@@ -328,8 +328,10 @@ object AmbientLight : BaseHook() {
             holder.getMediaViewHolderFieldAs<View>("mediaBgView", true)
         } else {
             holder.getMediaViewHolderFieldAs<View>("mediaBg", false)
-        } ?: return null
-        val parent = mediaBg.parent as? ViewGroup ?: return null
+        }
+        if (mediaBg == null) return null
+        val parent = mediaBg.parent as? ViewGroup
+        if (parent == null) return null
         val index = (parent.indexOfChild(mediaBg) + 1).coerceIn(0, parent.childCount)
 
         val drawable = AmbientLightDrawable().apply { start() }
@@ -364,7 +366,17 @@ object AmbientLight : BaseHook() {
     }
 
     private fun getMainColorHCT(drawable: Drawable): Int? {
-        val bitmap = metDrawable2Bitmap?.invoke(null, drawable) ?: return null
+        val method = metDrawable2Bitmap ?: return null
+        val bitmap = runCatching {
+            // 新签名 drawable2Bitmap(Drawable, int, int)：尺寸仅影响取色位图分辨率，不敏感
+            if (method.parameterTypes.size >= 3) {
+                val w = drawable.intrinsicWidth.takeIf { it > 0 } ?: 100
+                val h = drawable.intrinsicHeight.takeIf { it > 0 } ?: 100
+                method.invoke(null, drawable, w, h)
+            } else {
+                method.invoke(null, drawable)
+            }
+        }.getOrNull() ?: return null
         return metGetMainColorHCT?.invoke(null, bitmap) as? Int
     }
 

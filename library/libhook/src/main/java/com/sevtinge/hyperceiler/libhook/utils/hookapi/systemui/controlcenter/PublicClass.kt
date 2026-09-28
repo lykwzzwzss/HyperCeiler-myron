@@ -13,7 +13,7 @@
 
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
+ *
  * Copyright (C) 2023-2026 HyperCeiler Contributions
  */
 package com.sevtinge.hyperceiler.libhook.utils.hookapi.systemui.controlcenter
@@ -21,6 +21,9 @@ package com.sevtinge.hyperceiler.libhook.utils.hookapi.systemui.controlcenter
 import io.github.lingqiqi5211.ezhooktool.core.loadClassOrNull
 
 object PublicClass {
+
+    /** 美元符号常量（避免字面量被工具链/插值破坏）。 */
+    private val D: String = 36.toChar().toString()
 
     // OS3
     val hyperProgressSeekBar by lazy {
@@ -59,8 +62,21 @@ object PublicClass {
     }
 
     // Android 16
+    // 注意：下方类名含美元符号，必须用 36.toChar() 拼接 —— 裸写美元加标识符会被
+    // Kotlin 当作字符串插值（曾因此拼出错类名，常量长期为 null，插值静默破坏）。
     val seekBarObserverNew by lazy {
-        loadClassOrNull($$"com.android.systemui.statusbar.notification.mediacontrol.MiuiMediaViewControllerImpl$seekBarObserver$1")
+        loadClassOrNull(
+            "com.android.systemui.statusbar.notification.mediacontrol.MiuiMediaViewControllerImpl" +
+                D + "seekBarObserver" + D + "1"
+        ) ?: loadClassOrNull(
+            "com.android.systemui.statusbar.notification.mediacontrol.MiuiMediaSeekBarProgressOwner" +
+                D + "progressObserver" + D + "1"
+        )
+    }
+
+    /** progressObserver 的宿主类（其 this 引用即宿主，holder 需从宿主取）。 */
+    val seekBarProgressOwner by lazy {
+        loadClassOrNull("com.android.systemui.statusbar.notification.mediacontrol.MiuiMediaSeekBarProgressOwner")
     }
 
     // Android 15

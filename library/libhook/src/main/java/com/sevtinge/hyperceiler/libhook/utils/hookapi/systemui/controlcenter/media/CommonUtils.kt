@@ -42,10 +42,23 @@ object ConstraintSetHelper {
         clzConstraintSetClass!!.findMethod { name("setGoneMargin"); parameterTypes(Int::class.java, Int::class.java, Int::class.java) }
     }
     val applyTo by lazy {
-        clzConstraintSetClass!!.findMethod { name("applyTo") }
+        // 限定为单参 applyTo(ConstraintLayout)。
+        // 注意：不能用 ConstraintLayout::class.java —— 该引用类型来自宿主 APK 的私有库，
+        // 在 hook 进程 ClassLoader 中身份不同/不可加载，会导致匹配失败（曾报 Method not found）。
+        // primitive 类（如 Int::class.java）是 JVM 全局单例，不受此限。
+        val all = clzConstraintSetClass!!.declaredMethods.filter { it.name == "applyTo" }
+        (all.firstOrNull { it.parameterTypes.size == 1 } ?: all.firstOrNull())!!
     }
     val clone by lazy {
-        clzConstraintSetClass!!.findMethod { name("clone") }
+        // clone 有 4 个重载（(Context,int)/(ConstraintLayout)/(ConstraintSet)/(Constraints)）。
+        // 不限定参数时会命中声明序靠前的 clone(Context,int)，调用时报
+        // Wrong number of arguments: expected 2, got 1（氛围光 View 布局失败的根因）。
+        // 用「参数类型名字含 ConstraintLayout」匹配，以兼容 "androidx...ConstraintLayout" 与
+        // 描述符 "Landroidx/.../ConstraintLayout;" 两种命名，且完全不引用宿主类。
+        val all = clzConstraintSetClass!!.declaredMethods.filter { it.name == "clone" }
+        val oneParam = all.filter { it.parameterTypes.size == 1 }
+        (oneParam.firstOrNull { it.parameterTypes[0].name.contains("ConstraintLayout") }
+            ?: oneParam.firstOrNull())!!
     }
 }
 

@@ -176,7 +176,6 @@ public class SystemUIB extends BaseLoad {
 
         initHook(ClearFocusOnClearAll.INSTANCE, PrefsBridge.getBoolean("system_ui_clear_focus_on_clear_all"));
 
-
         // 灵动舞台
         initHook(HideStrongToast.INSTANCE, PrefsBridge.getBoolean("system_ui_status_bar_hide_smart_strong_toast"));
 
@@ -216,15 +215,20 @@ public class SystemUIB extends BaseLoad {
         // Media Card
         int ncBgMode = PrefsBridge.getStringAsInt("system_ui_control_center_media_control_background_mode", 0);
         int diBgMode = PrefsBridge.getStringAsInt("system_ui_island_media_control_background_mode", 0);
-        initHook(NewUnlockCustomActions.INSTANCE, PrefsBridge.getBoolean("system_ui_control_center_media_control_unlock_custom_actions"));
+        boolean pUnlockActions = PrefsBridge.getBoolean("system_ui_control_center_media_control_unlock_custom_actions");
+        boolean pLayout = PrefsBridge.getBoolean("system_ui_control_center_media_control_media_button_layout_switch");
+        boolean pSize = PrefsBridge.getBoolean("system_ui_control_center_media_control_media_button_size_switch");
+        boolean pProgressNc = PrefsBridge.getBoolean("system_ui_control_center_media_control_progress_on");
+        boolean pProgressIsland = PrefsBridge.getBoolean("system_ui_island_media_control_progress_on");
+        boolean pAlwaysDark = PrefsBridge.getBoolean("system_ui_control_center_media_control_always_dark");
+        initHook(NewUnlockCustomActions.INSTANCE, pUnlockActions);
         initHook(MediaControlBgFactory.INSTANCE, ncBgMode != 0 || diBgMode != 0);
         initHook(CustomBackground.INSTANCE, ncBgMode != 0 || diBgMode != 0);
-        initHook(MediaViewLayout.INSTANCE, PrefsBridge.getBoolean("system_ui_control_center_media_control_media_button_layout_switch"));
-        initHook(MediaViewSize.INSTANCE, PrefsBridge.getBoolean("system_ui_control_center_media_control_media_button_size_switch"));
-        initHook(MediaSeekBar.INSTANCE, PrefsBridge.getBoolean("system_ui_control_center_media_control_progress_on") ||
-            PrefsBridge.getBoolean("system_ui_island_media_control_progress_on"));
+        initHook(MediaViewLayout.INSTANCE, pLayout);
+        initHook(MediaViewSize.INSTANCE, pSize);
+        initHook(MediaSeekBar.INSTANCE, pProgressNc || pProgressIsland);
         initHook(AmbientLight.INSTANCE, ncBgMode == 0 || diBgMode == 0);
-        initHook(AlwaysDark.INSTANCE, ncBgMode == 0 && PrefsBridge.getBoolean("system_ui_control_center_media_control_always_dark"));
+        initHook(AlwaysDark.INSTANCE, ncBgMode == 0 && pAlwaysDark);
 
         // Other
         initHook(DoubleTapToSleep.INSTANCE, PrefsBridge.getBoolean("system_ui_status_bar_double_tap_to_sleep"));

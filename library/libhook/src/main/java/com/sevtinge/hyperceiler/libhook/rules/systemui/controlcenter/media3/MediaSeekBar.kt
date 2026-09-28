@@ -199,11 +199,19 @@ object MediaSeekBar : BaseHook() {
 
         if (isMoreAndroidVersion(36)) {
             seekBarObserverNew?.beforeHookMethod("onChanged") {
-                val controllerImpl =
-                    it.thisObject.getObjectFieldOrNull($$"this$0") ?: return@beforeHookMethod
-                val holder =
-                    controllerImpl.getObjectFieldOrNull("holder") ?: return@beforeHookMethod
+                val progressOwner =
+                    it.thisObject.getObjectFieldOrNull("this" + 36.toChar() + "0") ?: return@beforeHookMethod
+                // 新架构：progressObserver 宿主是 MiuiMediaSeekBarProgressOwner，无 holder 字段；
+                // holder 由 attach 时缓存到其附加字段（见下方 controllerClass.attach 分支）。
+                // 双路取 holder：优先用 attach 时缓存；失败则从 consumers 反查
+                // （consumers 里是 MiuiMediaViewControllerImpl 等 RenderStateConsumer，其有 holder 字段）
+                val holder = progressOwner.getAdditionalInstanceField("hc_holder")
+                    ?: resolveHolderFromConsumers(progressOwner)
                 val vmProgress = it.args[0] ?: return@beforeHookMethod
+                if (holder == null) {
+                    it.result = null
+                    return@beforeHookMethod
+                }
                 onProgressChanged(holder, vmProgress, false)
                 it.result = null
             }
@@ -233,7 +241,18 @@ object MediaSeekBar : BaseHook() {
 
             afterHookMethod("attach") { param ->
                 val holder = param.thisObject.getObjectFieldOrNull("holder") ?: return@afterHookMethod
-                val seekBarViewModel = param.thisObject.getObjectFieldOrNull("seekBarViewModel") ?: return@afterHookMethod
+                // seekBarViewModel 挂在 seekBarProgressOwner 上，不在 MiuiMediaViewControllerImpl 上！
+                // 旧代码从 thisObject 取 → 恒 null → 整段静默 return →
+                // ① listener 从未绑定（拖动无效）② hc_holder 也从未缓存（holderCached=false）。
+                val progressOwner = param.thisObject.getObjectFieldOrNull("seekBarProgressOwner")
+                val seekBarViewModel = progressOwner?.getObjectFieldOrNull("seekBarViewModel")
+                    ?: param.thisObject.getObjectFieldOrNull("seekBarViewModel")
+                if (seekBarViewModel == null) return@afterHookMethod
+                runCatching {
+                    progressOwner?.setAdditionalInstanceField("hc_holder", holder)
+                    // 反向缓存 owner 到 holder：拖动自建 listener 需要 owner.currentController 才能 seekTo
+                    progressOwner?.let { holder.setAdditionalInstanceField("hc_owner", it) }
+                }.onFailure { XposedLog.e(TAG, "cache holder to progressOwner failed: ${it.message}") }
                 bindSeekBarListener(holder, seekBarViewModel, false)
             }
 
@@ -319,11 +338,72 @@ object MediaSeekBar : BaseHook() {
         fldProgressHeight?.apply { isAccessible = true }?.set(seekBar, height)
     }
 
+    /** 从 ProgressOwner 的 consumers 集合反查 holder（新架构无 holder 字段的兜底路径）。 */
+    private fun resolveHolderFromConsumers(owner: Any): Any? = runCatching {
+        val consumers = owner.getObjectFieldOrNull("consumers") as? Iterable<*> ?: return null
+        for (c in consumers) {
+            if (c == null) continue
+            c.getObjectFieldOrNull("holder")?.let { return it }
+        }
+        null
+    }.getOrNull()
+
     private fun bindSeekBarListener(holder: Any, seekBarViewModel: Any, isDynamicIsland: Boolean) {
         val falsingManager = fldFalsingManager?.get(seekBarViewModel)
-        val listener = ctorSeekBarChangeListener?.newInstance(seekBarViewModel, falsingManager) as? SeekBar.OnSeekBarChangeListener
-        getOrCreateRealSeekBar(holder, isDynamicIsland)?.setOnSeekBarChangeListener(listener)
+        val rawListener = ctorSeekBarChangeListener?.newInstance(seekBarViewModel, falsingManager)
+        // 系统 listener 类在新版已成「死类」：只有 3 个回调方法、无 <init>、全库无人实例化
+        //（实测 ctor=false raw=false）。新系统改用 miuix HyperProgressSeekBar 的
+        // OnRangeChangedListener 机制，而本模块已把它替换为标准 SeekBar，该机制随之丢失
+        // → 拖动时滑块会动，但不通知 ViewModel，歌曲进度不变。
+        // 因此取不到系统 listener 时回退为自建 listener：松手后直接 MediaController.seekTo。
+        val listener = rawListener as? SeekBar.OnSeekBarChangeListener
+            ?: createSelfSeekListener(holder)
+        val seekBar = getOrCreateRealSeekBar(holder, isDynamicIsland)
+        seekBar?.setOnSeekBarChangeListener(listener)
     }
+
+    /**
+     * 自建 seek listener —— 系统 OnSeekBarChangeListener 实现类失效时的兜底。
+     * 通过 holder 附加字段 hc_owner 找到 MiuiMediaSeekBarProgressOwner，取其 currentController 执行 seekTo。
+     */
+    private fun createSelfSeekListener(holder: Any): SeekBar.OnSeekBarChangeListener =
+        object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {}
+
+            override fun onStartTrackingTouch(sb: SeekBar?) {
+                // 拖动期间禁止 onProgressChanged 用播放位置回写 progress，否则滑块会被"弹回"
+                holder.setAdditionalInstanceField("hc_scrubbing", true)
+            }
+
+            override fun onStopTrackingTouch(sb: SeekBar?) {
+                holder.setAdditionalInstanceField("hc_scrubbing", false)
+                // SeekBar 的 max/progress 单位与 MediaController.seekTo 一致（毫秒），可直接传
+                val progress = sb?.progress ?: return
+                val owner = holder.getAdditionalInstanceField("hc_owner")
+                val controller = owner?.getObjectFieldOrNull("currentController")
+                if (controller != null) {
+                    // seekTo 不在 MediaController 上，而在 MediaController.TransportControls 上
+                    // （产物实证：MediaController;->getTransportControls()）。
+                    // 统一用反射，避免编译期依赖；用 methods 搜索而非 Class.forName 拼 $ 内部类名。
+                    runCatching {
+                        val tc = controller.javaClass.methods
+                            .firstOrNull { it.name == "getTransportControls" && it.parameterTypes.isEmpty() }
+                            ?.invoke(controller)
+                        val seekTo = tc?.javaClass?.methods
+                            ?.firstOrNull { it.name == "seekTo" && it.parameterTypes.size == 1 }
+                        if (tc == null || seekTo == null) {
+                            XposedLog.e(TAG, lpparam.packageName, "selfSeek: tc=" + (tc != null)
+                                + " seekTo=" + (seekTo != null))
+                        } else {
+                            seekTo.invoke(tc, progress.toLong())
+                        }
+                    }.onFailure {
+                        XposedLog.e(TAG, lpparam.packageName, "selfSeek: seekTo failed: "
+                            + it.javaClass.simpleName + "/" + it.message)
+                    }
+                }
+            }
+        }
 
     @SuppressLint("SetTextI18n")
     private fun onProgressChanged(holder: Any, vmProgress: Any, isDynamicIsland: Boolean) {
@@ -345,7 +425,9 @@ object MediaSeekBar : BaseHook() {
             seekBar.max = duration
             elapsedTime?.let {
                 elapsedTimeView?.text = DateUtils.formatElapsedTime(it / 1000L)
-                if (!scrubbing) seekBar.progress = it
+                // 拖动中（含自建 listener 的 hc_scrubbing）不回写 progress，避免滑块被弹回
+                val selfScrubbing = holder.getAdditionalInstanceField("hc_scrubbing") == true
+                if (!scrubbing && !selfScrubbing) seekBar.progress = it
             }
             if (seekBar is SquigglySeekBar) {
                 seekBar.animate = playing && !scrubbing && listening
@@ -376,9 +458,9 @@ object MediaSeekBar : BaseHook() {
             holder.getMediaViewHolderFieldAs<SeekBar>("seekBar", true)
         } else {
             holder.getObjectFieldOrNullAs<SeekBar>("seekBar")
-        } ?: return null
-
-        val parent = origSeekBar.parent as? ViewGroup ?: return null
+        }
+        val parent = origSeekBar?.parent as? ViewGroup
+        if (origSeekBar == null || parent == null) return null
         val context = origSeekBar.context
         val index = (parent.indexOfChild(origSeekBar) + 1).coerceIn(0, parent.childCount)
 
