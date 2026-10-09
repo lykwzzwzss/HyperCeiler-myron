@@ -22,30 +22,24 @@ import android.annotation.SuppressLint;
 import android.view.View;
 import android.widget.FrameLayout;
 import android.widget.ProgressBar;
-import android.widget.TextView;
 
 import androidx.fragment.app.FragmentActivity;
 
 import com.sevtinge.hyperceiler.provision.R;
 
-import fan.provision.OobeUtils;
 
 import fan.bottomsheet.BottomSheetBehavior;
 import fan.bottomsheet.BottomSheetModal;
 
 public class TermsAndStatementBottomSheet {
 
-    static FragmentActivity mActivity;
     BottomSheetModal mBottomSheet;
 
     @SuppressLint("StaticFieldLeak")
     static ProgressBar mProgressBar;
-    @SuppressLint("StaticFieldLeak")
-    static TextView verificationCodeTip;
     static MarkdownView mMarkdownView;
 
     public TermsAndStatementBottomSheet(FragmentActivity activity) {
-        mActivity = activity;
         mBottomSheet = new BottomSheetModal(activity);
         mBottomSheet.setDragHandleViewEnabled(true);
         BottomSheetBehavior<FrameLayout> behavior = mBottomSheet.getBehavior();
@@ -61,36 +55,19 @@ public class TermsAndStatementBottomSheet {
         View rootView = mBottomSheet.getRootView();
         mProgressBar = rootView.findViewById(R.id.progress_bar);
         mMarkdownView = rootView.findViewById(R.id.markdown);
-        verificationCodeTip = rootView.findViewById(R.id.verification_code_tip);
         initView();
     }
 
     public static void initView() {
-        OobeUtils.refreshSecureSixDigit();
-
         mProgressBar.setVisibility(View.VISIBLE);
         mMarkdownView.setVisibility(View.INVISIBLE);
-        verificationCodeTip.setVisibility(View.GONE);
-
-        String verificationCode = OobeUtils.getSecureSixDigit();
-
         mMarkdownView.setOnMarkdownLoadListener(success -> {
             if (success) {
                 mProgressBar.setVisibility(View.INVISIBLE);
                 mMarkdownView.setVisibility(View.VISIBLE);
-                verificationCodeTip.setText(
-                    mActivity.getString(
-                        R.string.provision_terms_of_use_verification_code_tip,
-                        verificationCode
-                    )
-                );
-                verificationCodeTip.setVisibility(View.VISIBLE);
-            } else {
-                verificationCodeTip.setVisibility(View.GONE);
             }
         });
     }
-
 
     public static void loadMarkdown(String uri) {
         if (mMarkdownView != null) {

@@ -53,7 +53,7 @@
             android:layout="@layout/miuix_preference_widget_seekbar_compat_no_title"
             app:defaultValueTitle="@string/array_default"
             app:format="%s"
-            app:maxValue="29"
+            app:maxValue="45"
             app:minValue="15"
             app:showSeekBarValue="true"
             app:stepValue="1" />

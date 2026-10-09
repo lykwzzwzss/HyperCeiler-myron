@@ -421,8 +421,8 @@
     <string name="system_framework_volume_disable_safe">移除高音量安全限制</string>
     <string name="default_volume_safe_all">对全部情况启用</string>
     <string name="default_volume_safe_headset">仅连接耳机时启用</string>
-    <string name="system_framework_volume_media_steps">媒体音量阶数</string>
-    <string name="system_framework_volume_media_steps_desc">可能会导致音量条的滚动卡顿或蓝牙音量异常</string>
+    <string name="system_framework_volume_media_steps">媒体音量按键档位</string>
+    <string name="system_framework_volume_media_steps_desc">保留原生滑块精度，仅调整媒体音量键档位。蓝牙实际精度由设备决定，修改后重启手机生效。</string>
     <string name="system_framework_volume_steps">音量级数倍增</string>
     <string name="system_ui_display_cutout_title">屏幕缺口</string>
     <string name="system_ui_display_hide_cutout">隐藏屏幕缺口</string>

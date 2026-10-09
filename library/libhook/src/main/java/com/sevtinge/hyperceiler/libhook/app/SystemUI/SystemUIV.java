@@ -29,7 +29,6 @@ import com.sevtinge.hyperceiler.libhook.appbase.systemui.StatusBarActionBootstra
 import com.sevtinge.hyperceiler.libhook.base.BaseLoad;
 import com.sevtinge.hyperceiler.libhook.rules.home.navigation.HideNavigationBar;
 import com.sevtinge.hyperceiler.libhook.rules.systemframework.others.UnlockAlwaysOnDisplay;
-import com.sevtinge.hyperceiler.libhook.rules.systemframework.volume.VolumeMediaSteps;
 import com.sevtinge.hyperceiler.libhook.rules.systemsettings.AllowManageAllNotifications;
 import com.sevtinge.hyperceiler.libhook.rules.systemsettings.MoreNotificationSettings;
 import com.sevtinge.hyperceiler.libhook.rules.systemui.controlcenter.AutoDismissExpandedPopupsHook;
@@ -283,7 +282,6 @@ public class SystemUIV extends BaseLoad {
         initHook(UnlockClipboard.INSTANCE, PrefsBridge.getBoolean("system_ui_unlock_clipboard"));
         initHook(new ToastBlur(), PrefsBridge.getBoolean("system_framework_background_blur_toast"));
         initHook(new UnlockAlwaysOnDisplay(), PrefsBridge.getBoolean("aod_unlock_always_on_display_hyper"));
-        initHook(new VolumeMediaSteps(), PrefsBridge.getBoolean("system_framework_volume_media_steps_enable"));
         initHook(new FuckStatusbarGestures(), PrefsBridge.getBoolean("system_ui_move_log_to_miui"));
 
         if (PrefsBridge.getBoolean("misound_bluetooth")) {

@@ -24,7 +24,6 @@ import com.hchen.database.HookBase;
 import com.sevtinge.hyperceiler.common.utils.PrefsBridge;
 import com.sevtinge.hyperceiler.libhook.appbase.systemui.StatusBarActionBootstrap;
 import com.sevtinge.hyperceiler.libhook.base.BaseLoad;
-import com.sevtinge.hyperceiler.libhook.rules.systemframework.volume.VolumeMediaSteps;
 import com.sevtinge.hyperceiler.libhook.rules.systemsettings.AllowManageAllNotifications;
 import com.sevtinge.hyperceiler.libhook.rules.systemsettings.MoreNotificationSettings;
 import com.sevtinge.hyperceiler.libhook.rules.systemui.controlcenter.AutoDismissExpandedPopupsHook;
@@ -247,7 +246,6 @@ public class SystemUIB extends BaseLoad {
         initHook(UnlockClipboard.INSTANCE, PrefsBridge.getBoolean("system_ui_unlock_clipboard"));
         initHook(new UiLockApp(), PrefsBridge.getBoolean("system_framework_guided_access") && PrefsBridge.getBoolean("system_framework_guided_access_status"));
 
-        initHook(new VolumeMediaSteps(), PrefsBridge.getBoolean("system_framework_volume_media_steps_enable"));
         if (PrefsBridge.getBoolean("misound_bluetooth")) {
             initHook(new AutoSEffSwitchForSystemUi());
         }

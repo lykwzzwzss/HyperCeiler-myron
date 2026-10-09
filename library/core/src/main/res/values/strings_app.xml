@@ -460,8 +460,8 @@
     <string name="system_framework_volume_disable_safe">Remove high volume safety restrictions</string>
     <string name="default_volume_safe_all">For all cases</string>
     <string name="default_volume_safe_headset">Only when headphones are connected</string>
-    <string name="system_framework_volume_media_steps">Media volume level</string>
-    <string name="system_framework_volume_media_steps_desc">It may cause the scrolling of the volume bar to freeze or the Bluetooth volume to be abnormal</string>
+    <string name="system_framework_volume_media_steps">Media volume key steps</string>
+    <string name="system_framework_volume_media_steps_desc">Preserves the native slider range and changes only media volume key steps. Bluetooth resolution depends on the device. Restart the phone after changing this setting.</string>
     <string name="system_framework_volume_steps">Volume level multiplier</string>
     <string name="system_ui_display_cutout_title">Display cutout</string>
     <string name="system_ui_display_hide_cutout">Hide display cutout</string>
