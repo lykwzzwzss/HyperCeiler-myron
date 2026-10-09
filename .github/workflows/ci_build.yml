@@ -40,7 +40,7 @@ jobs:
           GIT_TOKEN: ${{ github.token }}
         run: |
           chmod +x gradlew
-          ./gradlew :library:libhook:testCanaryUnitTest :app:assembleCanary --console=plain --no-daemon --max-workers=2
+          ./gradlew :library:libhook:testCanaryUnitTest :app:assembleCanary -Pandroid.onlyEnableUnitTestForTheTestedBuildType=false --console=plain --no-daemon --max-workers=2
       - name: Record APK hashes
         run: |
           find app/build/outputs/apk/canary -type f -name '*.apk' -exec sha256sum {} + | tee apk-sha256.txt
