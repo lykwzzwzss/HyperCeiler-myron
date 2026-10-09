@@ -48,6 +48,21 @@ public class HomeTitleSettings extends DashboardFragment {
     }
 
     @Override
+    public boolean isPreferenceAvailableForSearch(String key) {
+        if (!isMoreHyperOSVersion(3f)) return true;
+        return !("pref_key_home_title_icon_scale".equals(key)
+            || "prefs_key_home_title_app_blur_enable".equals(key)
+            || "prefs_key_home_title_app_blur_radius".equals(key)
+            || "prefs_key_home_title_app_dim_alpha".equals(key)
+            || "prefs_key_home_title_wallpaper_blur_radius".equals(key)
+            || "prefs_key_home_title_wallpaper_dim_alpha".equals(key)
+            || "prefs_key_home_title_minus_blur_radius".equals(key)
+            || "prefs_key_home_title_minus_dim_alpha".equals(key)
+            || "prefs_key_home_title_fix_small_window".equals(key)
+            || "prefs_key_home_title_title_marquee".equals(key));
+    }
+
+    @Override
     public void initPrefs() {
         mDisableMonoChrome = findPreference("prefs_key_home_other_icon_mono_chrome");
 

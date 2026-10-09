@@ -27,6 +27,8 @@ import android.view.View;
 
 import androidx.annotation.NonNull;
 
+import java.lang.ref.WeakReference;
+
 import com.sevtinge.hyperceiler.common.log.AndroidLog;
 import com.sevtinge.hyperceiler.common.utils.PrefsBridge;
 import com.sevtinge.hyperceiler.libhook.base.BaseHook;
@@ -129,6 +131,7 @@ public class BlurUtils {
 
 
     private void setOnAttachStateChangeListener(View view) {
+        Drawable originalBackground = view.getBackground();
         View.OnAttachStateChangeListener listener = new View.OnAttachStateChangeListener() {
             @Override
             public void onViewAttachedToWindow(@NonNull View v) {
@@ -139,23 +142,41 @@ public class BlurUtils {
 
             @Override
             public void onViewDetachedFromWindow(@NonNull View v) {
-                v.setBackground(null);
+                if (v.getBackground() == mBlurDrawable) v.setBackground(originalBackground);
+                mViewRootImpl = null;
+                mBlurDrawable = null;
             }
         };
         view.addOnAttachStateChangeListener(listener);
-        BaseHook.registerHotReloadCleanup(() -> view.removeOnAttachStateChangeListener(listener));
+        // New miuix callbacks can run after attachment, so waiting for the next
+        // attach event would leave the first dialog with its original background.
+        if (view.isAttachedToWindow()) listener.onViewAttachedToWindow(view);
+        WeakReference<View> target = new WeakReference<>(view);
+        WeakReference<View.OnAttachStateChangeListener> callback = new WeakReference<>(listener);
+        BaseHook.registerHotReloadCleanup(() -> {
+            View current = target.get();
+            View.OnAttachStateChangeListener currentListener = callback.get();
+            if (current != null && currentListener != null) {
+                currentListener.onViewDetachedFromWindow(current);
+                current.removeOnAttachStateChangeListener(currentListener);
+            }
+        });
     }
 
     private Drawable createBackgroundDrawable(Object viewRootImpl, boolean isBlurEnable, int color, int cornerRadius, int blurRadius) {
         Drawable mBackgroundDrawable;
-        if (isBlurEnable) {
-            mBackgroundDrawable = (Drawable) Methods.callMethod(viewRootImpl, "createBackgroundBlurDrawable");
-            setColor(mBackgroundDrawable, color);
-            setCornerRadius(mBackgroundDrawable, cornerRadius);
-            setBlurRadius(mBackgroundDrawable, blurRadius);
-        } else {
-            mBackgroundDrawable = createGradientDrawable(color, cornerRadius);
+        if (isBlurEnable && viewRootImpl != null) {
+            try {
+                mBackgroundDrawable = (Drawable) Methods.callMethod(viewRootImpl, "createBackgroundBlurDrawable");
+                setColor(mBackgroundDrawable, color);
+                setCornerRadius(mBackgroundDrawable, cornerRadius);
+                setBlurRadius(mBackgroundDrawable, blurRadius);
+                return mBackgroundDrawable;
+            } catch (Throwable e) {
+                AndroidLog.e("BlurUtils", "Background blur unavailable: " + e);
+            }
         }
+        mBackgroundDrawable = createGradientDrawable(color, cornerRadius);
         return mBackgroundDrawable;
     }
 

@@ -43,6 +43,11 @@ public class HomeDockSettings extends DashboardFragment implements Preference.On
     ColorPickerPreference mDockBackgroundColor;
 
     @Override
+    public boolean isPreferenceAvailableForSearch(String key) {
+        return !"prefs_key_home_dock_disable_recents_icon".equals(key) || isPad();
+    }
+
+    @Override
     public int getPreferenceScreenResId() {
         return R.xml.home_dock;
     }

@@ -20,34 +20,26 @@ package com.sevtinge.hyperceiler.libhook.rules.systemui.controlcenter;
 
 import com.sevtinge.hyperceiler.libhook.base.BaseHook;
 import io.github.lingqiqi5211.ezhooktool.xposed.java.IReplaceHook;
-
 import io.github.lingqiqi5211.ezhooktool.xposed.common.HookParam;
 
 public class RemoveNotifNumLimit extends BaseHook {
     @Override
     public void init() {
-        findAndHookMethod("com.android.systemui.statusbar.notification.collection.coordinator.CountLimitCoordinator", "attach", "com.android.systemui.statusbar.notification.collection.NotifPipeline", new IReplaceHook() {
-            @Override
-            public Object replace(HookParam param) {
-                return null;
+        // K90's attach() registers CountLimitCoordinator$$ExternalSyntheticLambda0
+        // as a BindEventManager.Listener. Its onViewBound$1 callback groups
+        // notifications by package and dismisses entries beyond the limit.
+        // Skipping coordinator attachment prevents only this MIUI cap; other
+        // notification pipeline coordinators remain attached normally.
+        findAndHookMethod(
+            "com.android.systemui.statusbar.notification.collection.coordinator.CountLimitCoordinator",
+            "attach",
+            "com.android.systemui.statusbar.notification.collection.NotifPipeline",
+            new IReplaceHook() {
+                @Override
+                public Object replace(HookParam param) {
+                    return null;
+                }
             }
-        });
-
-        try {
-            findAndHookMethod("com.android.systemui.statusbar.notification.collection.coordinator.CountLimitCoordinator$$ExternalSyntheticLambda0", "onViewBound", "com.android.systemui.statusbar.notification.collection.NotificationEntry", new IReplaceHook() {
-                @Override
-                public Object replace(HookParam param) {
-                    return null;
-                }
-            });
-        } catch (Throwable t) {
-            findAndHookMethod("com.android.systemui.statusbar.notification.collection.coordinator.CountLimitCoordinator$$ExternalSyntheticLambda0", "onViewBound$1", "com.android.systemui.statusbar.notification.collection.NotificationEntry", new IReplaceHook() {
-                @Override
-                public Object replace(HookParam param) {
-                    return null;
-                }
-            });
-        }
-
+        );
     }
 }

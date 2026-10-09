@@ -26,10 +26,14 @@ import android.app.ActivityOptions;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.ActivityInfo;
 import android.content.IntentFilter;
+import android.os.Build;
 import android.graphics.Rect;
 import android.provider.Settings;
 import android.util.Pair;
+
+import androidx.core.content.ContextCompat;
 
 import com.sevtinge.hyperceiler.common.log.XposedLog;
 import com.sevtinge.hyperceiler.common.utils.api.ProjectApi;
@@ -63,6 +67,83 @@ public class StickyFloatingWindows extends BaseHook {
             initializeSystemReady(restoredAtms, restoredContext);
         }
         Class<?> MiuiMultiWindowUtils = findClass("android.util.MiuiMultiWindowUtils");
+        if (Build.VERSION.SDK_INT >= 37) {
+            Class<?> activityStarter = findClassIfExists("com.android.server.wm.ActivityStarter");
+            Class<?> requestClass = findClassIfExists("com.android.server.wm.ActivityStarter$Request");
+            Class<?> safeOptionsClass = findClassIfExists("com.android.server.wm.SafeActivityOptions");
+            if (activityStarter != null && requestClass != null && safeOptionsClass != null
+                && findMethodExactIfExists(activityStarter, "executeRequest", requestClass) != null) {
+                hookAllMethods(activityStarter, "executeRequest", new IMethodHook() {
+                    @Override
+                    public void before(HookParam param) {
+                        Object request = param.getArgs()[0];
+                        Intent intent = (Intent) getObjectField(request, "intent");
+                        if (intent == null) return;
+                        ActivityInfo resolvedActivity = (ActivityInfo) getObjectField(request, "activityInfo");
+                        String pkgName = intent.getComponent() != null
+                            ? intent.getComponent().getPackageName()
+                            : resolvedActivity == null ? null : resolvedActivity.packageName;
+                        if (pkgName == null) return;
+                        if (pkgName.equals(getObjectField(request, "callingPackage"))
+                            || fwBlackList.contains(pkgName) || !fwApps.containsKey(pkgName)) return;
+
+                        Object safeOptions = getObjectField(request, "activityOptions");
+                        if (safeOptions != null) {
+                            ActivityOptions original = (ActivityOptions) getObjectField(safeOptions, "mOriginalOptions");
+                            if (original != null && getIntField(original, "mLaunchWindowingMode") == 5) return;
+                        }
+
+                        Object service = getObjectField(param.getThisObject(), "mService");
+                        Context context = (Context) getObjectField(service, "mContext");
+                        try {
+                            ActivityOptions callerOptions = safeOptions == null ? null
+                                : (ActivityOptions) getObjectField(safeOptions, "mOriginalOptions");
+                            ActivityOptions options = callerOptions == null
+                                ? (ActivityOptions) callStaticMethod(
+                                    MiuiMultiWindowUtils, "getActivityOptions", context, pkgName, true, false)
+                                : callerOptions;
+                            options = patchActivityOptions(
+                                context, options, pkgName, MiuiMultiWindowUtils);
+                            if (safeOptions != null) {
+                                setObjectField(safeOptions, "mOriginalOptions", options);
+                            } else {
+                                Object replacement = newInstance(safeOptionsClass, options,
+                                    getIntField(request, "callingPid"), getIntField(request, "callingUid"));
+                                setObjectField(request, "activityOptions", replacement);
+                            }
+                        } catch (Throwable t) {
+                            XposedLog.w(TAG, "", t);
+                        }
+                    }
+
+                    @Override
+                    public void after(HookParam param) {
+                        Object request = param.getArgs()[0];
+                        Intent intent = (Intent) getObjectField(request, "intent");
+                        if (intent == null) return;
+                        ActivityInfo resolvedActivity = (ActivityInfo) getObjectField(request, "activityInfo");
+                        String pkgName = intent.getComponent() != null
+                            ? intent.getComponent().getPackageName()
+                            : resolvedActivity == null ? null : resolvedActivity.packageName;
+                        if (pkgName == null) return;
+                        if (fwBlackList.contains(pkgName)) return;
+                        Object optionsObject = getObjectField(param.getThisObject(), "mOptions");
+                        int windowingMode = optionsObject instanceof ActivityOptions
+                            ? getIntField(optionsObject, "mLaunchWindowingMode") : 0;
+                        Object service = getObjectField(param.getThisObject(), "mService");
+                        Context context = (Context) getObjectField(service, "mContext");
+                        if (windowingMode == 5) {
+                            if (fwApps.putIfAbsent(pkgName, new Pair<>(0f, null)) == null) {
+                                storeFwAppsInSetting(context);
+                            }
+                        } else if (pkgName.equals(getObjectField(request, "callingPackage"))
+                            && fwApps.remove(pkgName) != null) {
+                            storeFwAppsInSetting(context);
+                        }
+                    }
+                });
+            }
+        }
         hookAllMethods("com.android.server.wm.ActivityStarterInjector", "modifyLaunchActivityOptionIfNeed", new IMethodHook() {
             @Override
             public void after(HookParam param) {
@@ -267,6 +348,31 @@ public class StickyFloatingWindows extends BaseHook {
         unserializeFwApps(Settings.Global.getString(context.getContentResolver(), ProjectApi.mAppModulePkg + ".fw.apps"));
     }
 
+
+    private static boolean isValidPackageName(String packageName) {
+        return packageName != null && !packageName.trim().isEmpty()
+            && packageName.matches("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+");
+    }
+
+    private static boolean isValidStickyScale(float scale) {
+        return scale == 0f || (Float.isFinite(scale) && scale > 0f && scale <= 1f);
+    }
+
+    private static boolean isValidStickyRect(Context context, Rect rect) {
+        if (rect == null) return true;
+        if (context == null) return false;
+        long width = (long) rect.right - rect.left;
+        long height = (long) rect.bottom - rect.top;
+        int displayWidth = context.getResources().getDisplayMetrics().widthPixels;
+        int displayHeight = context.getResources().getDisplayMetrics().heightPixels;
+        if (displayWidth <= 0 || displayHeight <= 0) return false;
+        long maxWidth = (long) displayWidth * 2;
+        long maxHeight = (long) displayHeight * 2;
+        return width > 0 && width <= maxWidth && height > 0 && height <= maxHeight
+            && rect.left >= -maxWidth && rect.right <= maxWidth
+            && rect.top >= -maxHeight && rect.bottom <= maxHeight;
+    }
+
     @SuppressWarnings("unchecked")
     private void initializeSystemReady(Object activityTaskManagerService, Context context) {
         if (context == null || activityTaskManagerService == null || mSystemReadyInitialized) {
@@ -299,34 +405,34 @@ public class StickyFloatingWindows extends BaseHook {
         BroadcastReceiver updateReceiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context receiverContext, Intent intent) {
-                String pkgName = intent.getStringExtra("package");
+                if (intent == null) return;
                 String action = intent.getAction();
+                if ((ACTION_PREFIX + "getFwApps").equals(action)) {
+                    syncFwApps(receiverContext);
+                    return;
+                }
+
+                String pkgName = intent.getStringExtra("package");
+                if (!isValidPackageName(pkgName)) return;
                 if ((ACTION_PREFIX + "updateFwApps").equals(action)) {
                     float scale = intent.getFloatExtra("scale", 0f);
                     Rect rect = intent.getParcelableExtra("rect");
-                    if (!fwApps.containsKey(pkgName)) {
-                        fwApps.put(pkgName, new Pair<>(scale, rect));
-                        storeFwAppsInSetting(receiverContext);
-                        return;
-                    }
+                    if (!isValidStickyScale(scale) || !isValidStickyRect(receiverContext, rect)) return;
+
                     Pair<Float, Rect> oldPair = fwApps.get(pkgName);
-                    if (scale == 0f) {
-                        scale = oldPair.first;
-                    }
-                    if (rect == null) {
-                        rect = oldPair.second;
+                    if (oldPair != null) {
+                        if (scale == 0f) scale = oldPair.first == null ? 0f : oldPair.first;
+                        if (rect == null) rect = oldPair.second;
                     }
                     fwApps.put(pkgName, new Pair<>(scale, rect));
                     storeFwAppsInSetting(receiverContext);
-                } else if ((ACTION_PREFIX + "getFwApps").equals(action)) {
-                    syncFwApps(receiverContext);
                 } else if ((ACTION_PREFIX + "removeFwApps").equals(action)
-                    && pkgName != null && fwApps.remove(pkgName) != null) {
+                    && fwApps.remove(pkgName) != null) {
                     storeFwAppsInSetting(receiverContext);
                 }
             }
         };
-        context.registerReceiver(updateReceiver, filter, Context.RECEIVER_EXPORTED);
+        ContextCompat.registerReceiver(context, updateReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED);
         registerReceiverHotReloadCleanup(context, updateReceiver);
 
         mSystemReadyInitialized = true;

@@ -26,6 +26,7 @@ import com.sevtinge.hyperceiler.libhook.base.BaseLoad;
 import com.sevtinge.hyperceiler.libhook.rules.aod.UnlockAiWallpaper;
 import com.sevtinge.hyperceiler.libhook.rules.aod.UnlockAodAon;
 import com.sevtinge.hyperceiler.libhook.rules.aod.UnlockShortCuts;
+import com.sevtinge.hyperceiler.libhook.rules.systemframework.others.UnlockAlwaysOnDisplay;
 
 @HookBase(targetPackage = "com.miui.aod")
 public class Aod extends BaseLoad {
@@ -33,7 +34,7 @@ public class Aod extends BaseLoad {
     @Override
     public void onPackageLoaded() {
         initHook(UnlockShortCuts.INSTANCE, isMoreSmallVersion(200, 2f));
-        // initHook(new UnlockAlwaysOnDisplay(), PrefsBridge.getBoolean("aod_unlock_always_on_display_hyper"));
+        initHook(new UnlockAlwaysOnDisplay(), PrefsBridge.getBoolean("aod_unlock_always_on_display_hyper"));
         initHook(new UnlockAodAon(), PrefsBridge.getBoolean("aod_unlock_aon"));
         initHook(UnlockAiWallpaper.INSTANCE, PrefsBridge.getBoolean("aod_unlock_ai_wallpaper"));
     }

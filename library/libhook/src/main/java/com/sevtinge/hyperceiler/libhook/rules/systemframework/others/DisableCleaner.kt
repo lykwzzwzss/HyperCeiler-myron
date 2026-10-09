@@ -1,94 +1,88 @@
 /*
   * This file is part of HyperCeiler.
-
+  *
   * HyperCeiler is free software: you can redistribute it and/or modify
   * it under the terms of the GNU Affero General Public License as
   * published by the Free Software Foundation, either version 3 of the
   * License.
-
-  * This program is distributed in the hope that it will be useful,
-  * but WITHOUT ANY WARRANTY; without even the implied warranty of
-  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  * GNU Affero General Public License for more details.
-
-  * You should have received a copy of the GNU Affero General Public License
-  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-  * Copyright (C) 2023-2026 HyperCeiler Contributions
-*/
+  */
 package com.sevtinge.hyperceiler.libhook.rules.systemframework.others
 
 import com.sevtinge.hyperceiler.libhook.base.BaseHook
-import io.github.lingqiqi5211.ezhooktool.core.findAllMethods
-import io.github.lingqiqi5211.ezhooktool.xposed.dsl.createBeforeHooks
+import io.github.lingqiqi5211.ezhooktool.xposed.common.HookParam
+import io.github.lingqiqi5211.ezhooktool.xposed.java.IMethodHook
 
 object DisableCleaner : BaseHook() {
     override fun init() {
-        findClass("com.android.server.am.ActivityManagerService")
-            .findAllMethods { name("checkExcessivePowerUsage") }
-            .createBeforeHooks {
-                it.result = null
-            }
+        hookVoidMethods("com.android.server.am.ActivityManagerService", "checkExcessivePowerUsage")
+        hookIntMethods("com.android.server.am.ActivityManagerShellCommand", "runKillAll") {
+            it.setResult(0)
+        }
+        hookBooleanMethods("com.android.server.am.psc.OomAdjuster", "shouldKillExcessiveProcesses")
+        hookBooleanMethods("com.android.server.am.OomAdjuster", "shouldKillExcessiveProcesses")
+        hookUpdateAndTrim("com.android.server.am.psc.OomAdjuster")
+        hookUpdateAndTrim("com.android.server.am.OomAdjuster")
+        hookVoidMethods("com.android.server.am.PhantomProcessList", "trimPhantomProcessesIfNecessary")
+        hookVoidMethods("com.android.server.am.ProcessMemoryCleaner", "checkBackgroundProcCompact")
+        hookVoidMethods("com.android.server.am.ProcessPowerCleaner", "handleAutoLockOff")
+        hookVoidMethods("com.android.server.am.SystemPressureControllerNative", "nStartPressureMonitor")
+        hookVoidMethods("com.android.server.am.SystemPressureController", "nStartPressureMonitor")
+        hookVoidMethods("com.android.server.wm.RecentTasks", "trimInactiveRecentTasks")
+        hookVoidMethods("com.android.server.am.CameraBooster", "boostCameraIfNeeded")
+        hookVoidMethods("com.miui.cameraopt.adapter.ProcessManagerAdapter", "killApplication")
+    }
 
-        findClass("com.android.server.am.ActivityManagerShellCommand")
-            .findAllMethods { name("runKillAll") }
-            .createBeforeHooks {
-                it.result = null
-            }
+    private fun hookVoidMethods(className: String, methodName: String) = hookMethods(
+        className, methodName, Void.TYPE
+    ) { it.setResult(null) }
 
-        findClass("com.android.server.am.CameraBooster")
-            .findAllMethods { name("boostCameraIfNeeded") }
-            .createBeforeHooks {
-                it.result = null
-            }
+    private fun hookBooleanMethods(className: String, methodName: String) = hookMethods(
+        className, methodName, java.lang.Boolean.TYPE
+    ) { it.setResult(false) }
 
-        findClass("com.android.server.am.OomAdjuster")
-            .findAllMethods { name("shouldKillExcessiveProcesses") }
-            .createBeforeHooks {
-                it.result = false
-            }
+    private fun hookIntMethods(className: String, methodName: String, callback: (HookParam) -> Unit) =
+        hookMethods(className, methodName, Integer.TYPE, callback)
 
-        findClass("com.android.server.am.OomAdjuster")
-            .findAllMethods { name("updateAndTrimProcessLSP") }
-            .createBeforeHooks {
-                it.args[2] = 0
+    private fun hookMethods(
+        className: String,
+        methodName: String,
+        returnType: Class<*>,
+        callback: (HookParam) -> Unit
+    ) {
+        val targetClass = findClassIfExists(className) ?: return
+        targetClass.declaredMethods
+            .filter { it.name == methodName && it.returnType == returnType }
+            .forEach { method ->
+                hookMethod(method, object : IMethodHook {
+                    override fun before(param: HookParam) {
+                        callback(param)
+                    }
+                })
             }
+    }
 
-        findClass("com.android.server.am.PhantomProcessList")
-            .findAllMethods { name("trimPhantomProcessesIfNecessary") }
-            .createBeforeHooks {
-                it.result = null
+    private fun hookUpdateAndTrim(className: String) {
+        val targetClass = findClassIfExists(className) ?: return
+        targetClass.declaredMethods
+            .filter {
+                it.name == "updateAndTrimProcessLSP" && it.returnType == Void.TYPE
+                    && it.parameterTypes.size >= 3
+                    && (it.parameterTypes[2] == java.lang.Long.TYPE
+                        || it.parameterTypes[2] == Integer.TYPE)
             }
-
-        findClass("com.android.server.am.ProcessMemoryCleaner")
-            .findAllMethods { name("checkBackgroundProcCompact") }
-            .createBeforeHooks {
-                it.result = null
+            .forEach { method ->
+                hookMethod(method, object : IMethodHook {
+                    override fun before(param: HookParam) {
+                        val args = param.getArgs()
+                        if (args.size < 3) return
+                        // The third parameter is the last-trim cutoff on both known signatures.
+                        args[2] = when (args[2]) {
+                            is Long -> 0L
+                            is Int -> 0
+                            else -> return
+                        }
+                    }
+                })
             }
-
-        findClass("com.android.server.am.ProcessPowerCleaner")
-            .findAllMethods { name("handleAutoLockOff") }
-            .createBeforeHooks {
-                it.result = null
-            }
-
-        findClass("com.android.server.am.SystemPressureController")
-            .findAllMethods { name("nStartPressureMonitor") }
-            .createBeforeHooks {
-                it.result = null
-            }
-
-        findClass("com.android.server.wm.RecentTasks")
-            .findAllMethods { name("trimInactiveRecentTasks") }
-            .createBeforeHooks {
-                it.result = null
-            }
-
-        findClass("com.miui.cameraopt.adapter.ProcessManagerAdapter")
-            .findAllMethods { name("killApplication") }
-            .createBeforeHooks {
-                it.result = null
-            }
-
     }
 }

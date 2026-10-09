@@ -70,6 +70,11 @@ public class VariousFragment extends DashboardFragment {
     }
 
     @Override
+    public boolean isPreferenceAvailableForSearch(String key) {
+        return !("prefs_key_add_clipboard_clear".equals(key) && isMoreSmallVersion(200, 2f));
+    }
+
+    @Override
     public void initPrefs() {
         mClipboard = findPreference("prefs_key_sogou_xiaomi_clipboard");
         mClipboardClear = findPreference("prefs_key_add_clipboard_clear");
@@ -81,7 +86,8 @@ public class VariousFragment extends DashboardFragment {
         mAospImeNavBarLayoutEnd = findPreference(PREF_AOSP_IME_NAV_BAR_LAYOUT_END);
 
         if (isMoreSmallVersion(200, 2f)) {
-            setFuncHint(mClipboardClear, 2);
+            // Recent systems already provide this action; keep the old-OS route.
+            if (mClipboardClear != null) mClipboardClear.setVisible(false);
         }
 
         if (mClipboard != null) {

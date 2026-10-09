@@ -76,6 +76,14 @@ public class DashboardFragment extends SettingsPreferenceFragment {
         return mPreferenceResId != 0 ? mPreferenceResId : 0;
     }
 
+    /**
+     * Mirrors version/device visibility for the search index. Called on an
+     * unattached fragment, so overrides must not depend on inflated preferences.
+     */
+    public boolean isPreferenceAvailableForSearch(String key) {
+        return true;
+    }
+
     @Override
     public void onCreatePreferencesAfter(Bundle bundle, String s) {
         super.onCreatePreferencesAfter(bundle, s);

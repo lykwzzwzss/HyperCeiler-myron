@@ -28,15 +28,16 @@ import com.sevtinge.hyperceiler.common.utils.PrefsBridge;
 import com.sevtinge.hyperceiler.common.utils.prefs.PrefsChangeObserver;
 import com.sevtinge.hyperceiler.libhook.base.BaseHook;
 
-import java.util.HashSet;
+import java.util.ArrayDeque;
+import java.util.Optional;
 import java.util.Set;
 
 import io.github.lingqiqi5211.ezhooktool.xposed.common.HookParam;
 import io.github.lingqiqi5211.ezhooktool.xposed.java.IMethodHook;
 
 public class AllowAutoStart extends BaseHook {
-    private Set<String> strings = new HashSet<>();
-    private ApplicationInfo calleeInfo = null;
+    private final ThreadLocal<ArrayDeque<Optional<ApplicationInfo>>> calleeStack =
+        ThreadLocal.withInitial(ArrayDeque::new);
 
     @Override
     public void init() {
@@ -52,21 +53,32 @@ public class AllowAutoStart extends BaseHook {
         findAndHookMethod("miui.app.ActivitySecurityHelper", "getCheckStartActivityIntent", ApplicationInfo.class, ApplicationInfo.class, Intent.class, boolean.class, int.class, boolean.class, int.class, int.class, new IMethodHook() {
             @Override
             public void before(HookParam param) {
-                calleeInfo = (ApplicationInfo) param.getArgs()[1];
+                calleeStack.get().push(Optional.ofNullable((ApplicationInfo) param.getArgs()[1]));
+            }
+
+            @Override
+            public void after(HookParam param) {
+                ArrayDeque<Optional<ApplicationInfo>> stack = calleeStack.get();
+                if (!stack.isEmpty()) stack.pop();
+                if (stack.isEmpty()) calleeStack.remove();
             }
         });
 
         findAndHookMethod("miui.app.ActivitySecurityHelper", "restrictForChain", ApplicationInfo.class, new IMethodHook() {
             @Override
             public void before(HookParam param) {
-                strings = PrefsBridge.getStringSet("system_framework_auto_start_apps");
+                Set<String> strings = PrefsBridge.getStringSet("system_framework_auto_start_apps");
                 ApplicationInfo info = (ApplicationInfo) param.getArgs()[0];
-                if (calleeInfo != null) {
+                ArrayDeque<Optional<ApplicationInfo>> stack = calleeStack.get();
+                Optional<ApplicationInfo> current = stack.peek();
+                if (current != null && current.isPresent()) {
+                    ApplicationInfo calleeInfo = current.get();
                     if (strings.contains(calleeInfo.packageName)) {
-                        XposedLog.d(TAG, "Boot has been allowed! caller" + info.packageName + " callee: " + calleeInfo.packageName);
+                        XposedLog.d(TAG, "Boot has been allowed! caller" + (info == null ? "unknown" : info.packageName) + " callee: " + calleeInfo.packageName);
                         param.setResult(false);
                     }
                 }
+                if (stack.isEmpty()) calleeStack.remove();
             }
         });
     }

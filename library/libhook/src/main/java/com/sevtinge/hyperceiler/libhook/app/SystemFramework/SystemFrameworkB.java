@@ -38,6 +38,9 @@ import com.sevtinge.hyperceiler.libhook.rules.systemframework.display.EnhanceRec
 import com.sevtinge.hyperceiler.libhook.rules.systemframework.display.ThemeProvider;
 import com.sevtinge.hyperceiler.libhook.rules.systemframework.display.UseAOSPScreenShot;
 import com.sevtinge.hyperceiler.libhook.rules.systemframework.freeform.DisableFreeformBlackList;
+import com.sevtinge.hyperceiler.libhook.rules.systemframework.freeform.AllowAutoStart;
+import com.sevtinge.hyperceiler.libhook.rules.systemframework.freeform.OpenAppInFreeForm;
+import com.sevtinge.hyperceiler.libhook.rules.systemframework.freeform.StickyFloatingWindows;
 import com.sevtinge.hyperceiler.libhook.rules.systemframework.freeform.FreeFormCount;
 import com.sevtinge.hyperceiler.libhook.rules.systemframework.freeform.FreeformBubble;
 import com.sevtinge.hyperceiler.libhook.rules.systemframework.freeform.UnForegroundPin;
@@ -66,6 +69,7 @@ import com.sevtinge.hyperceiler.libhook.rules.systemframework.others.DeleteOnPos
 import com.sevtinge.hyperceiler.libhook.rules.systemframework.others.DisableGestureMonitor;
 import com.sevtinge.hyperceiler.libhook.rules.systemframework.others.DisableMiuiLite;
 import com.sevtinge.hyperceiler.libhook.rules.systemframework.others.DisableMiuiWatermark;
+import com.sevtinge.hyperceiler.libhook.rules.systemframework.others.DisableCleaner;
 import com.sevtinge.hyperceiler.libhook.rules.systemframework.others.DisablePinVerifyPer72h;
 import com.sevtinge.hyperceiler.libhook.rules.systemframework.others.DisableRemoveFingerprintSensorConfig;
 import com.sevtinge.hyperceiler.libhook.rules.systemframework.others.DisableThermal;
@@ -117,10 +121,9 @@ public class SystemFrameworkB extends BaseLoad {
         initHook(new DisableFreeformBlackList(), PrefsBridge.getBoolean("system_framework_disable_freeform_blacklist"));
         initHook(new FreeformBubble(), PrefsBridge.getBoolean("system_framework_freeform_bubble"));
         initHook(new UnForegroundPin(), PrefsBridge.getBoolean("system_framework_freeform_foreground_pin"));
-        /*initHook(new StickyFloatingWindows(), PrefsBridge.getBoolean("system_framework_freeform_sticky"));
-        initHook(new AllowAutoStart(), PrefsBridge.getBoolean("system_framework_auto_start_apps_menu"));
-        initHook(MultiFreeFormSupported.INSTANCE, PrefsBridge.getBoolean("system_framework_freeform_recents_to_small_freeform"));
-        initHook(new OpenAppInFreeForm(), PrefsBridge.getBoolean("system_framework_freeform_jump"));*/
+        initHook(new StickyFloatingWindows(), PrefsBridge.getBoolean("system_framework_freeform_sticky"));
+        initHook(new OpenAppInFreeForm(), PrefsBridge.getBoolean("system_framework_freeform_jump"));
+        initHook(new AllowAutoStart(), PrefsBridge.getBoolean("system_framework_auto_start_menu"));
 
         // 音量
         initHook(new VolumeDefaultStream(), PrefsBridge.getStringAsInt("system_framework_default_volume_stream", 0) != 0);
@@ -154,6 +157,7 @@ public class SystemFrameworkB extends BaseLoad {
 
         // 其它-底层
         initHook(new DisableMiuiWatermark(), PrefsBridge.getBoolean("system_framework_disable_miui_watermark"));
+        initHook(DisableCleaner.INSTANCE, PrefsBridge.getBoolean("system_framework_other_disable_cleaner"));
         initHook(new SpeedInstall(), PrefsBridge.getBoolean("system_framework_other_speed_install"));
         initHook(new UseAndroidPackageInstaller(), PrefsBridge.getBoolean("system_framework_use_android_package_installer"));
         initHook(DisableGestureMonitor.INSTANCE, PrefsBridge.getBoolean("system_framework_other_disable_gesture_monitor"));

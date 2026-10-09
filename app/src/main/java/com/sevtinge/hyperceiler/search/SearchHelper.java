@@ -139,9 +139,27 @@ public class SearchHelper {
             String location = null;
             int locationId = 0;
             List<ModEntity> batch = new ArrayList<>();
+            DashboardFragment availability = getAvailabilityFragment(fragment);
+            int hiddenDepth = -1;
 
             while (eventType != XmlPullParser.END_DOCUMENT) {
+                if (eventType == XmlPullParser.END_TAG && xml.getDepth() == hiddenDepth) {
+                    hiddenDepth = -1;
+                }
                 if (eventType == XmlPullParser.START_TAG) {
+                    if (hiddenDepth >= 0) {
+                        eventType = xml.next();
+                        continue;
+                    }
+                    String key = xml.getAttributeValue(ANDROID_NS, "key");
+                    boolean hidden = "false".equals(xml.getAttributeValue(APP_NS, "isPreferenceVisible"));
+                    boolean disabled = "false".equals(xml.getAttributeValue(ANDROID_NS, "enabled"));
+                    if (hidden || disabled || (key != null && availability != null
+                        && !availability.isPreferenceAvailableForSearch(key))) {
+                        hiddenDepth = xml.getDepth();
+                        eventType = xml.next();
+                        continue;
+                    }
                     String tag = xml.getName();
 
                     if (isPreferenceScreenTag(tag)) {
@@ -227,6 +245,16 @@ public class SearchHelper {
         Configuration config = new Configuration(context.getResources().getConfiguration());
         config.setLocale(LanguageHelper.getCurrentLocale(context));
         return context.createConfigurationContext(config).getResources();
+    }
+
+    private static DashboardFragment getAvailabilityFragment(String fragmentName) {
+        try {
+            Object instance = Class.forName(fragmentName).getDeclaredConstructor().newInstance();
+            return instance instanceof DashboardFragment page ? page : null;
+        } catch (Throwable t) {
+            AndroidLog.e(TAG, "Cannot read search availability: " + fragmentName, t);
+            return null;
+        }
     }
 
     private static int getXmlResIdFromFragment(String fragmentName) {

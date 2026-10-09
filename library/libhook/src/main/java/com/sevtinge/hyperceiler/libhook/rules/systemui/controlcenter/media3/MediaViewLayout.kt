@@ -19,6 +19,7 @@
 package com.sevtinge.hyperceiler.libhook.rules.systemui.controlcenter.media3
 
 import android.graphics.Bitmap
+import android.graphics.Rect
 import android.graphics.drawable.Drawable
 import android.view.View
 import android.widget.ImageButton
@@ -146,6 +147,12 @@ object MediaViewLayout : BaseHook() {
     private val diActionsLeftAligned by lazy {
         PrefsBridge.getBoolean("system_ui_island_media_control_media_button_actions_left_aligned")
     }
+    private val diButtonSize by lazy {
+        PrefsBridge.getInt("system_ui_island_media_control_media_button", 140)
+    }
+    private val diButtonSizeCustom by lazy {
+        PrefsBridge.getInt("system_ui_island_media_control_media_button_custom", 140)
+    }
     private val diOnLayout by lazy {
         PrefsBridge.getBoolean("system_ui_island_media_control_media_button_layout_switch")
     }
@@ -156,12 +163,17 @@ object MediaViewLayout : BaseHook() {
         if (ncOnLayout) {
             initLayoutConstraints()
             initHideSeamlessHook()
-            initButtonSize()
+            miuiMediaViewControllerImpl?.let {
+                initButtonSize(it, ncButtonSize, ncButtonSizeCustom)
+            }
         }
 
         if (isIsland && diOnLayout) {
             initDynamicIslandLayout()
             initDynamicIslandHideSeamless()
+            miuiIslandMediaViewBinderImpl?.let {
+                initButtonSize(it, diButtonSize, diButtonSizeCustom)
+            }
         }
     }
 
@@ -199,37 +211,95 @@ object MediaViewLayout : BaseHook() {
         miuiMediaViewControllerImpl?.beforeHookMethod("setSeamless") { it.result = null }
     }
 
-    private fun initButtonSize() {
-        if (ncButtonSize == 140 && ncButtonSizeCustom == 140) return
+    private fun initButtonSize(targetClass: Class<*>, buttonSize: Int, customSize: Int) {
+        if (buttonSize == 140 && customSize == 140) return
 
         val drawableUtils = findClassIfExists("com.miui.utils.DrawableUtils") ?: return
-        val targetClass = miuiMediaViewControllerImpl ?: return
+        val drawable2Bitmap = runCatching {
+            drawableUtils.getDeclaredMethod(
+                "drawable2Bitmap",
+                Drawable::class.java,
+                Int::class.javaPrimitiveType!!,
+                Int::class.javaPrimitiveType!!
+            )
+        }.getOrNull() ?: return
 
-        targetClass.beforeHookMethod("bindButtonCommon") {
-            val mediaAction = it.args[1] ?: return@beforeHookMethod
-            val button = it.args[0] as ImageButton
-            val desc = mediaAction.getObjectFieldOrNullAs<String>("contentDescription")
+        targetClass.beforeHookMethod("bindButtonCommon") { param ->
+            val mediaAction = param.args.getOrNull(1) ?: return@beforeHookMethod
+            val button = param.args.getOrNull(0) as? ImageButton ?: return@beforeHookMethod
+            val description = mediaAction.getObjectFieldOrNullAs<CharSequence>("contentDescription")
                 ?: return@beforeHookMethod
-
-            val isMainButton = desc.contains("Play") || desc.contains("Pause")
-                || desc.contains("Previous track") || desc.contains("Next track")
+            val isMainButton = isMainButton(button, description)
 
             val targetSize = when {
-                ncButtonSizeCustom != 140 && !isMainButton -> ncButtonSizeCustom
-                ncButtonSize != 140 && isMainButton -> ncButtonSize
-                ncButtonSize != 140 && !isMainButton -> ncButtonSize
+                customSize != 140 && !isMainButton -> customSize
+                buttonSize != 140 && isMainButton -> buttonSize
+                buttonSize != 140 && !isMainButton -> buttonSize
                 else -> return@beforeHookMethod
-            }
+            }.coerceAtLeast(1)
 
-            val loadDrawable = mediaAction.getObjectFieldOrNullAs<Drawable>("icon")
+            val icon = mediaAction.getObjectFieldOrNullAs<Drawable>("icon")
                 ?: return@beforeHookMethod
-            val method = drawableUtils.getDeclaredMethod("drawable2Bitmap", Drawable::class.java)
-            val bitmap = method.invoke(null, loadDrawable) as Bitmap
-            val scaledBitmap = bitmap.scale(targetSize, targetSize)
-            mediaAction.setObjectField("icon", scaledBitmap.toDrawable(button.context.resources))
+            val drawableForBitmap = icon.constantState
+                ?.newDrawable(button.context.resources)
+                ?.mutate() ?: icon
+            val oldBounds = Rect(drawableForBitmap.bounds)
+            val bitmap = try {
+                drawable2Bitmap.invoke(null, drawableForBitmap, 0, 0) as? Bitmap
+            } catch (_: Throwable) {
+                null
+            } finally {
+                drawableForBitmap.bounds = oldBounds
+            } ?: return@beforeHookMethod
+            // Avoid allocating a second bitmap when this action is rebound
+            // with the same target size.
+            val scaledBitmap = if (bitmap.width == targetSize && bitmap.height == targetSize) {
+                bitmap
+            } else {
+                runCatching { bitmap.scale(targetSize, targetSize) }.getOrNull()
+                    ?: return@beforeHookMethod
+            }
+            val scaledIcon = scaledBitmap.toDrawable(button.context.resources)
+            val actionCopy = copyMediaActionWithIcon(mediaAction, scaledIcon)
+                ?: return@beforeHookMethod
+
+            // MediaAction objects may be shared between the control-center and
+            // Island binders. Replace only this invocation's argument instead
+            // of permanently rewriting the shared action's final icon field.
+            param.args[1] = actionCopy
         }
     }
 
+    private fun isMainButton(button: ImageButton, description: CharSequence): Boolean {
+        val label = description.toString().trim()
+        val systemLabels = listOf(
+            "controls_media_button_play",
+            "controls_media_button_pause",
+            "controls_media_button_prev",
+            "controls_media_button_next"
+        )
+        if (systemLabels.any { name ->
+                val id = button.resources.getIdentifier(name, "string", button.context.packageName)
+                id != 0 && label == button.context.getString(id)
+            }) return true
+
+        // Third-party notification actions may still use the English labels.
+        return listOf("Play", "Pause", "Previous track", "Next track")
+            .any { label.equals(it, ignoreCase = true) }
+    }
+
+    private fun copyMediaActionWithIcon(mediaAction: Any, icon: Drawable): Any? {
+        val constructor = mediaAction.javaClass.declaredConstructors
+            .firstOrNull { it.parameterCount == 5 } ?: return null
+        val action = mediaAction.getObjectFieldOrNull("action")
+        val description = mediaAction.getObjectFieldOrNull("contentDescription")
+        val background = mediaAction.getObjectFieldOrNull("background")
+        val rebindId = mediaAction.getObjectFieldOrNull("rebindId")
+        return runCatching {
+            constructor.isAccessible = true
+            constructor.newInstance(icon, action, description, background, rebindId)
+        }.getOrNull()
+    }
     // ==================== 灵动岛布局 ====================
 
     private fun initDynamicIslandLayout() {

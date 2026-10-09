@@ -61,6 +61,14 @@ public class OtherSettings extends DashboardFragment
     }
 
     @Override
+    public boolean isPreferenceAvailableForSearch(String key) {
+        if (key.equals("prefs_key_system_ui_move_log_to_miui") && isMoreSmallVersion(200, 2f)) {
+            return false;
+        }
+        return super.isPreferenceAvailableForSearch(key);
+    }
+
+    @Override
     public void initPrefs() {
         int mPct = PrefsBridge.getStringAsInt("prefs_key_system_ui_others_pct_style", 0);
 

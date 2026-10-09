@@ -18,12 +18,33 @@
 */
 package com.sevtinge.hyperceiler.hooker.securitycenter;
 
+import static com.sevtinge.hyperceiler.libhook.utils.api.DeviceHelper.Hardware.getDeviceName;
+
 import com.sevtinge.hyperceiler.core.R;
 import com.sevtinge.hyperceiler.dashboard.DashboardFragment;
 
+import androidx.preference.Preference;
+
 public class SidebarSettings extends DashboardFragment {
+    private static final String KEY_DISABLE_SUGGEST = "prefs_key_disable_security_center_sidebar_show_suggest";
     @Override
     public int getPreferenceScreenResId() {
         return R.xml.security_center_sidebar;
+    }
+
+    @Override
+    public void initPrefs() {
+        Preference disableSuggest = findPreference(KEY_DISABLE_SUGGEST);
+        if (isK90Device()) disableSuggest.setVisible(false);
+    }
+
+    @Override
+    public boolean isPreferenceAvailableForSearch(String key) {
+        return !KEY_DISABLE_SUGGEST.equals(key) || !isK90Device();
+    }
+
+    private static boolean isK90Device() {
+        String device = getDeviceName();
+        return "annibale".equals(device) || "myron".equals(device);
     }
 }

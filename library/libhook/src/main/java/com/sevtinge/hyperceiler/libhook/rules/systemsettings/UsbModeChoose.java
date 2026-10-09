@@ -20,9 +20,12 @@ package com.sevtinge.hyperceiler.libhook.rules.systemsettings;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.content.Context;
 import android.content.res.Configuration;
 import android.content.res.Resources;
+import android.net.TetheringManager;
 import android.os.Bundle;
+import android.os.Handler;
 import android.util.ArrayMap;
 
 import com.sevtinge.hyperceiler.common.log.XposedLog;
@@ -58,6 +61,15 @@ public class UsbModeChoose extends BaseHook {
 
     @Override
     public void init() {
+        Class<?> usbPreferenceActivity = findClassIfExists(
+            "com.android.settings.connecteddevice.usb.UsbPreferenceActivity");
+        Class<?> usbStatsFragment = findClassIfExists(
+            "com.android.settings.connecteddevice.usb.UsbStatsPreferenceFragement");
+        if (usbPreferenceActivity != null && usbStatsFragment != null) {
+            initCurrentUsbChooser(usbStatsFragment);
+            return;
+        }
+
         Class<?> usbModeChooser = findClassIfExists(
             "com.android.settings.connecteddevice.usb.UsbModeChooserActivity");
         if (usbModeChooser == null) return;
@@ -163,6 +175,97 @@ public class UsbModeChoose extends BaseHook {
                 }
             );
         }
+    }
+
+
+    private void initCurrentUsbChooser(Class<?> usbStatsFragment) {
+        findAndHookMethod(usbStatsFragment, "onCreatePreferences", Bundle.class, String.class,
+            new IMethodHook() {
+                @Override
+                public void after(HookParam param) {
+                    Object fragment = param.getThisObject();
+                    Context context = (Context) callMethod(fragment, "getContext");
+                    if (context == null) return;
+                    Activity currentActivity = (Activity) getObjectField(fragment, "mActivity");
+                    if (currentActivity == null) currentActivity = (Activity) callMethod(fragment, "getActivity");
+                    if (currentActivity == null || currentActivity.getIntent() == null
+                        || currentActivity.getIntent().getAction() != null) return;
+
+                    boolean waitForReverseCharge = false;
+                    if (mChoose != 0) {
+                        Object backend = getObjectField(fragment, "mBackend");
+                        switch (mChoose) {
+                            case 1 -> callMethod(backend, "setCurrentFunctions", 0L);
+                            case 2 -> callMethod(backend, "setCurrentFunctions", 4L);
+                            case 3 -> callMethod(backend, "setCurrentFunctions", 16L);
+                            case 4 -> callMethod(backend, "setCurrentFunctions", 8L);
+                            case 5 -> {
+                                boolean supported = (boolean) callMethod(fragment, "isSupportReverseCharge");
+                                if (supported) {
+                                    callMethod(backend, "setPowerRole", 1);
+                                    waitForReverseCharge = true;
+                                } else {
+                                    XposedLog.i(TAG, "The current device does not support USB reverse charging.");
+                                }
+                            }
+                            case 6 -> startUsbTethering(context);
+                            default -> { }
+                        }
+                    }
+
+                    if (waitForReverseCharge) {
+                        Object backend = getObjectField(fragment, "mBackend");
+                        Handler handler = (Handler) getObjectField(fragment, "mHandler");
+                        if (handler != null) {
+                            Activity reverseChargeActivity = currentActivity;
+                            Runnable reverseChargeCheck = () -> {
+                                if (reverseChargeActivity.isFinishing() || reverseChargeActivity.isDestroyed()) return;
+                                try {
+                                    if ((int) callMethod(backend, "getPowerRole") == 1
+                                        && (int) callMethod(backend, "getDataRole") == 2) {
+                                        callMethod(backend, "setDataRole", 1);
+                                    }
+                                    callMethod(fragment, "initWinodws");
+                                    if (modes) callMethod(reverseChargeActivity, "dismissDialogAndFinish");
+                                } catch (Throwable t) {
+                                    XposedLog.e(TAG, "Failed to complete USB reverse charging: " + t);
+                                }
+                            };
+                            handler.postDelayed(reverseChargeCheck, 2000L);
+                            registerHotReloadCleanup(() -> handler.removeCallbacks(reverseChargeCheck));
+                        }
+                    } else if (modes) {
+                        Object activity = getObjectField(fragment, "mActivity");
+                        if (activity != null) callMethod(activity, "dismissDialogAndFinish");
+                    }
+                }
+            }
+        );
+    }
+
+    private void startUsbTethering(Context context) {
+        TetheringManager tethering = context.getSystemService(TetheringManager.class);
+        if (tethering == null) {
+            XposedLog.e(TAG, "USB tethering service is unavailable.");
+            return;
+        }
+        // TETHERING_USB is hidden from the API-37 compile SDK surface, but remains type 1
+        // in the Android framework contract consumed by the public request builder.
+        TetheringManager.TetheringRequest request =
+            new TetheringManager.TetheringRequest.Builder(1).build();
+        tethering.startTethering(request, context.getMainExecutor(),
+            new TetheringManager.StartTetheringCallback() {
+                @Override
+                public void onTetheringStarted() {
+                    XposedLog.i(TAG, "USB tethering started from the USB chooser.");
+                }
+
+                @Override
+                public void onTetheringFailed(int error) {
+                    XposedLog.e(TAG, "USB tethering failed: " + error);
+                }
+            }
+        );
     }
 
     public void setAllMode() {

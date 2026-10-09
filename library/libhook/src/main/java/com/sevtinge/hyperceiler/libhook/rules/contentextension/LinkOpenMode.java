@@ -18,6 +18,7 @@
 */
 package com.sevtinge.hyperceiler.libhook.rules.contentextension;
 
+import android.app.ActivityOptions;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
@@ -63,22 +64,32 @@ public class LinkOpenMode extends BaseHook {
         Intent intent = new Intent(Intent.ACTION_VIEW, uri);
         intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         switch (mode) {
-            case 0 -> setFreeFormIntent(context, getDefaultBrowserApp(context));
+            case 0 -> startFreeFormIntent(context, intent, getDefaultBrowserApp(context));
 
             case 2 -> {
                 intent.setPackage("com.android.browser");
-                setFreeFormIntent(context, "com.android.browser");
+                startFreeFormIntent(context, intent, "com.android.browser");
             }
+            default -> context.startActivity(intent);
         }
-        context.startActivity(intent);
     }
 
-
-    private void setFreeFormIntent(Context context, String packageName) {
-        if (PrefsBridge.getBoolean("system_framework_freeform_jump") && PrefsBridge.getBoolean("system_framework_freeform_content_extension")) {
-            Intent mFreeFormIntent = new Intent(ACTION_PREFIX + "SetFreeFormPackage");
-            mFreeFormIntent.putExtra("package", packageName);
-            context.sendBroadcast(mFreeFormIntent);
+    private void startFreeFormIntent(Context context, Intent intent, String packageName) {
+        if (packageName == null || !PrefsBridge.getBoolean("system_framework_freeform_jump")
+            || !PrefsBridge.getBoolean("system_framework_freeform_content_extension")) {
+            context.startActivity(intent);
+            return;
+        }
+        try {
+            Class<?> multiWindowUtils = findClassIfExists("android.util.MiuiMultiWindowUtils");
+            ActivityOptions options = (ActivityOptions) callStaticMethod(
+                multiWindowUtils, "getActivityOptions", context, packageName, true, false);
+            callMethod(options, "setLaunchWindowingMode", 5);
+            callMethod(options, "setMiuiConfigFlag", 2);
+            context.startActivity(intent, options.toBundle());
+        } catch (Throwable t) {
+            com.sevtinge.hyperceiler.common.log.XposedLog.w(TAG, getPackageName(), t);
+            context.startActivity(intent);
         }
     }
 

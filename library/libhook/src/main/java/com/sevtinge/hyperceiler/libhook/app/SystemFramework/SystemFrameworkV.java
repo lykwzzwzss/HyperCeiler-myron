@@ -112,7 +112,7 @@ public class SystemFrameworkV extends BaseLoad {
         initHook(new DisablePersistent(), PrefsBridge.getBoolean("system_framework_disable_persistent"));
 
         // 小窗
-        initHook(new AllowAutoStart(), PrefsBridge.getBoolean("system_framework_auto_start_apps_menu"));
+        initHook(new AllowAutoStart(), PrefsBridge.getBoolean("system_framework_auto_start_menu"));
         initHook(new FreeFormCount(), PrefsBridge.getBoolean("system_framework_freeform_count"));
         initHook(new FreeformBubble(), PrefsBridge.getBoolean("system_framework_freeform_bubble"));
         initHook(new DisableFreeformBlackList(), PrefsBridge.getBoolean("system_framework_disable_freeform_blacklist"));

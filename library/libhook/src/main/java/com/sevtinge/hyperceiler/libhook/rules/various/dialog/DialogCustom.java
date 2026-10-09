@@ -18,147 +18,119 @@
  */
 package com.sevtinge.hyperceiler.libhook.rules.various.dialog;
 
-import android.content.Context;
-import android.content.res.Configuration;
 import android.view.Gravity;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
 
-import com.sevtinge.hyperceiler.common.log.XposedLog;
 import com.sevtinge.hyperceiler.common.utils.PrefsBridge;
 import com.sevtinge.hyperceiler.libhook.base.BaseHook;
 import com.sevtinge.hyperceiler.libhook.utils.api.DisplayUtils;
 import com.sevtinge.hyperceiler.libhook.utils.hookapi.blur.BlurUtils;
 
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.util.LinkedList;
-import java.util.List;
+import java.util.Set;
+import java.util.WeakHashMap;
 
 import io.github.lingqiqi5211.ezhooktool.xposed.common.HookParam;
 import io.github.lingqiqi5211.ezhooktool.xposed.java.IMethodHook;
 
 public class DialogCustom extends BaseHook {
-
-    Context mContext;
-    View mParentPanel = null;
-
-    Class<?> mAlertControllerCls;
-    Class<?> mDialogParentPanelCls;
-
-    int mDialogGravity;
-    int mDialogHorizontalMargin;
-    int mDialogBottomMargin;
+    // A panel may be updated many times for IME/insets/configuration changes.
+    // Attach its background listener once, without retaining dismissed dialogs.
+    private final WeakHashMap<View, Boolean> initializedPanels = new WeakHashMap<>();
+    private int gravity;
+    private int horizontalMargin;
+    private int bottomMargin;
 
     @Override
     public void init() {
+        Class<?> controller = findClassIfExists(getPackageName().equals("com.miui.home")
+            ? "miui.home.lib.dialog.AlertController" : "miuix.appcompat.app.AlertController");
+        if (controller == null) return;
 
-        if (getPackageName().equals("com.miui.home")) {
-            mAlertControllerCls = findClassIfExists("miui.home.lib.dialog.AlertController");
-        } else {
-            mAlertControllerCls = findClassIfExists("miuix.appcompat.app.AlertController");
-        }
-        mDialogParentPanelCls = findClassIfExists("miuix.internal.widget.DialogParentPanel");
-
-        List<Method> mAllMethodList = new LinkedList<>();
+        gravity = PrefsBridge.getStringAsInt("various_dialog_gravity", 0);
+        horizontalMargin = PrefsBridge.getInt("various_dialog_margin_horizontal", 0);
+        bottomMargin = PrefsBridge.getInt("various_dialog_margin_bottom", 0);
+        registerHotReloadCleanup(initializedPanels::clear);
 
         if (PrefsBridge.getBoolean("various_dialog_window_blur")) {
-            hookAllConstructors(mAlertControllerCls, new IMethodHook() {
+            hookAllConstructors(controller, new IMethodHook() {
                 @Override
                 public void after(HookParam param) {
-                    Window mWindow = (Window) getObjectField(param.getThisObject(), "mWindow");
-                    mWindow.getAttributes().setBlurBehindRadius(PrefsBridge.getInt("various_dialog_window_blur_radius", 60)); // android.R.styleable.Window_windowBlurBehindRadius
-                    mWindow.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND);
+                    Object value = getObjectField(param.getThisObject(), "mWindow");
+                    if (!(value instanceof Window window)) return;
+                    WindowManager.LayoutParams attributes = window.getAttributes();
+                    attributes.setBlurBehindRadius(PrefsBridge.getInt("various_dialog_window_blur_radius", 60));
+                    window.setAttributes(attributes);
+                    window.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND);
                 }
             });
         }
 
-        boolean oldMethodFound = false;
-        if (mAlertControllerCls != null) {
-
-            for (Method method : mAlertControllerCls.getDeclaredMethods()) {
-                if (method.getName().equals("setupDialogPanel")) {
-                    oldMethodFound = true;
-                    XposedLog.i(TAG, getPackageName(), method.getName());
+        // Keep the old callbacks, and cover current miuix including asynchronous
+        // inflation and panel replacement. Only hook methods that are declared.
+        Set<String> callbacks = Set.of("setupDialogPanel", "updateDialogPanel", "setupView",
+            "updateDialogPanelLayoutParams", "updateParentPanelMarginByWindowInsets",
+            "onAttachedToWindow");
+        Field materialEnabled = null;
+        if (PrefsBridge.getBoolean("various_dialog_bg_blur_custom_enable")) {
+            try {
+                materialEnabled = controller.getDeclaredField("mMaterialEnabled");
+                materialEnabled.setAccessible(true);
+            } catch (NoSuchFieldException ignored) {
+                // Older miuix does not apply material effects to this background.
+            }
+        }
+        Field material = materialEnabled;
+        IMethodHook update = new IMethodHook() {
+            @Override
+            public void before(HookParam param) {
+                // New miuix posts material styling after setupView and makes the
+                // background transparent. Custom background owns this panel.
+                if (material != null) {
+                    try {
+                        material.setBoolean(param.getThisObject(), false);
+                    } catch (IllegalAccessException ignored) {
+                    }
                 }
-                mAllMethodList.add(method);
             }
 
-            mDialogGravity = PrefsBridge.getStringAsInt("various_dialog_gravity", 0);
-            mDialogHorizontalMargin = PrefsBridge.getInt("various_dialog_margin_horizontal", 0);
-            mDialogBottomMargin = PrefsBridge.getInt("various_dialog_margin_bottom", 0);
-
+            @Override
+            public void after(HookParam param) {
+                applyPanel(param.getThisObject());
+            }
+        };
+        for (Method method : controller.getDeclaredMethods()) {
+            if (callbacks.contains(method.getName())) hookMethod(method, update);
         }
-
-        if (oldMethodFound) {
-            XposedLog.i(TAG, getPackageName(), "oldMethod found.");
-
-            findAndHookMethod(mAlertControllerCls, "setupDialogPanel", Configuration.class, new IMethodHook() {
-                @Override
-                public void after(HookParam param) {
-                    mParentPanel = (View) getObjectField(param.getThisObject(), "mParentPanel");
-                    mContext = mParentPanel.getContext();
-                    FrameLayout.LayoutParams layoutParams = (FrameLayout.LayoutParams) mParentPanel.getLayoutParams();
-                    if (mDialogGravity != 0) {
-                        layoutParams.width = FrameLayout.LayoutParams.MATCH_PARENT;
-                        layoutParams.gravity = mDialogGravity == 1 ? Gravity.CENTER : Gravity.BOTTOM | Gravity.CENTER;
-                        layoutParams.setMarginStart(mDialogHorizontalMargin == 0 ? 0 : DisplayUtils.dp2px(mDialogHorizontalMargin));
-                        layoutParams.setMarginEnd(mDialogHorizontalMargin == 0 ? 0 : DisplayUtils.dp2px(mDialogHorizontalMargin));
-                        layoutParams.bottomMargin = mDialogGravity == 1 ? 0 : DisplayUtils.dp2px(mDialogBottomMargin);
-                    }
-                    mParentPanel.setLayoutParams(layoutParams);
-                    new BlurUtils(mParentPanel, "various_dialog_bg_blur");
-                }
-            });
-
-        } else {
-            XposedLog.i(TAG, getPackageName(), "oldMethod not found.");
-            hookAllMethods(mAlertControllerCls, "updateDialogPanel", new IMethodHook() {
-                @Override
-                public void after(HookParam param) {
-                    mParentPanel = (View) getObjectField(param.getThisObject(), "mParentPanel");
-                    mContext = mParentPanel.getContext();
-                    FrameLayout.LayoutParams layoutParams = (FrameLayout.LayoutParams) mParentPanel.getLayoutParams();
-                    if (mDialogGravity != 0) {
-                        layoutParams.width = FrameLayout.LayoutParams.MATCH_PARENT;
-                        layoutParams.gravity = mDialogGravity == 1 ? Gravity.CENTER : Gravity.BOTTOM | Gravity.CENTER;
-                        layoutParams.setMarginStart(mDialogHorizontalMargin == 0 ? 0 : DisplayUtils.dp2px(mDialogHorizontalMargin));
-                        layoutParams.setMarginEnd(mDialogHorizontalMargin == 0 ? 0 : DisplayUtils.dp2px(mDialogHorizontalMargin));
-                        layoutParams.bottomMargin = mDialogGravity == 1 ? 0 : DisplayUtils.dp2px(mDialogBottomMargin);
-                    }
-                    mParentPanel.setLayoutParams(layoutParams);
-                    new BlurUtils(mParentPanel, "various_dialog_bg_blur");
-                }
-            });
-        }
-
-        try {
-            hookAllMethods(mAlertControllerCls, "updateParentPanelMarginByWindowInsets", new IMethodHook() {
-                @Override
-                public void after(HookParam param) {
-                    mParentPanel = (View) getObjectField(param.getThisObject(), "mParentPanel");
-
-                    mContext = mParentPanel.getContext();
-                    FrameLayout.LayoutParams layoutParams = (FrameLayout.LayoutParams) mParentPanel.getLayoutParams();
-                    if (mDialogGravity != 0) {
-                        layoutParams.width = FrameLayout.LayoutParams.MATCH_PARENT;
-
-                        layoutParams.gravity = mDialogGravity == 1 ? Gravity.CENTER : Gravity.BOTTOM | Gravity.CENTER;
-
-                        layoutParams.setMarginStart(mDialogHorizontalMargin == 0 ? 0 : DisplayUtils.dp2px(mDialogHorizontalMargin));
-                        layoutParams.setMarginEnd(mDialogHorizontalMargin == 0 ? 0 : DisplayUtils.dp2px( mDialogHorizontalMargin));
-                        layoutParams.bottomMargin = mDialogGravity == 1 ? 0 : DisplayUtils.dp2px(mDialogBottomMargin);
-                    }
-                    mParentPanel.setLayoutParams(layoutParams);
-
-                }
-            });
-        } catch (Exception e) {
-            XposedLog.e(TAG, getPackageName(), e);
-        }
-
-
     }
 
+    private void applyPanel(Object controller) {
+        Object value = getObjectField(controller, "mParentPanel");
+        if (!(value instanceof View panel)) return;
+        ViewGroup.LayoutParams params = panel.getLayoutParams();
+        if (gravity != 0 && params instanceof FrameLayout.LayoutParams layout) {
+            int side = DisplayUtils.dp2px(panel.getContext(), horizontalMargin);
+            int bottom = gravity == 1 ? 0 : DisplayUtils.dp2px(panel.getContext(), bottomMargin);
+            int targetGravity = gravity == 1 ? Gravity.CENTER : Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
+            if (layout.width != ViewGroup.LayoutParams.MATCH_PARENT || layout.gravity != targetGravity
+                || layout.getMarginStart() != side || layout.getMarginEnd() != side
+                || layout.bottomMargin != bottom) {
+                layout.width = ViewGroup.LayoutParams.MATCH_PARENT;
+                layout.gravity = targetGravity;
+                layout.setMarginStart(side);
+                layout.setMarginEnd(side);
+                layout.bottomMargin = bottom;
+                panel.setLayoutParams(layout);
+            }
+        }
+        if (!initializedPanels.containsKey(panel)) {
+            initializedPanels.put(panel, Boolean.TRUE);
+            new BlurUtils(panel, "various_dialog_bg_blur");
+        }
+    }
 }

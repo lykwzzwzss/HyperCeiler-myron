@@ -36,7 +36,7 @@ object MediaViewSize : BaseHook() {
     // ==================== 通知中心配置 ====================
 
     private val ncModifyTextSize by lazy {
-        PrefsBridge.getBoolean("system_ui_control_center_media_control_text_size")
+        PrefsBridge.getBoolean("system_ui_control_center_media_control_media_button_size_switch")
     }
     private val ncTitleSize by lazy {
         PrefsBridge.getInt("system_ui_control_center_media_control_title_size", 180).toFloat() / 10
@@ -51,7 +51,7 @@ object MediaViewSize : BaseHook() {
     // ==================== 灵动岛配置 ====================
 
     private val diModifyTextSize by lazy {
-        PrefsBridge.getBoolean("system_ui_island_media_control_text_size")
+        PrefsBridge.getBoolean("system_ui_island_media_control_media_button_size_switch")
     }
     private val diTitleSize by lazy {
         PrefsBridge.getInt("system_ui_island_media_control_title_size", 180).toFloat() / 10

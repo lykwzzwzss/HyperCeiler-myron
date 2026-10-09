@@ -35,6 +35,15 @@ public class FocusNotificationLyricsSettings extends DashboardFragment {
     }
 
     @Override
+    public boolean isPreferenceAvailableForSearch(String key) {
+        if (key.equals("prefs_key_system_ui_statusbar_music_hide_clock")
+                && (isPad() || isMoreAndroidVersion(36))) {
+            return false;
+        }
+        return super.isPreferenceAvailableForSearch(key);
+    }
+
+    @Override
     public void initPrefs() {
         mHideClock = findPreference("prefs_key_system_ui_statusbar_music_hide_clock");
 

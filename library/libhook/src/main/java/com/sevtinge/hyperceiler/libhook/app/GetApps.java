@@ -34,7 +34,7 @@ public class GetApps extends BaseLoad {
     public void onPackageLoaded() {
         initHook(new BypassRiskCheck(), PrefsBridge.getBoolean("market_bypass_risk_check"));
         initHook(new DisableAds(), PrefsBridge.getBoolean("market_disable_ads"));
-        initHook(new DeviceModify(), PrefsBridge.getStringAsInt("market_device_modify_new", 0) != 0);
+        initHook(new DeviceModify(), DeviceModify.getConfiguredMode() != 0);
 
         initHook(DisablePackageMonitor.INSTANCE, PrefsBridge.getBoolean("market_package_monitor"));
         initHook(DisableStartPushDialog.INSTANCE, PrefsBridge.getBoolean("market_disable_start_push_dialog"));

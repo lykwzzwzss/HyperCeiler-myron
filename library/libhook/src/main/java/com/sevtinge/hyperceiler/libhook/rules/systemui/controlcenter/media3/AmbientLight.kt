@@ -83,7 +83,7 @@ object AmbientLight : BaseHook() {
         PrefsBridge.getStringAsInt("system_ui_island_media_control_background_mode", 0)
     }
     private val diAmbientLightType by lazy {
-        PrefsBridge.getStringAsInt("system_ui_island_media_control_ambient_light_type", 0)
+        PrefsBridge.getStringAsInt("system_ui_island_media_control_ambient_light", 0)
     }
     private val diAmbientColorOpt by lazy {
         PrefsBridge.getBoolean("system_ui_island_media_control_ambient_light_opt")

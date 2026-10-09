@@ -25,8 +25,7 @@ import androidx.preference.SwitchPreference;
 
 import com.sevtinge.hyperceiler.core.R;
 import com.sevtinge.hyperceiler.dashboard.DashboardFragment;
-
-import fan.preference.DropDownPreference;
+import com.sevtinge.hyperceiler.libhook.rules.getapps.DeviceModifyModePolicy;
 
 public class GetAppsFragment extends DashboardFragment {
 
@@ -34,6 +33,7 @@ public class GetAppsFragment extends DashboardFragment {
     EditTextPreference mDevice;
     EditTextPreference mManufacturer;
     SwitchPreference mRiskCheck;
+    SwitchPreference mDeviceModify;
 
     @Override
     public int getPreferenceScreenResId() {
@@ -46,21 +46,28 @@ public class GetAppsFragment extends DashboardFragment {
         mModel = findPreference("prefs_key_market_device_modify_model");
         mManufacturer = findPreference("prefs_key_market_device_modify_manufacturer");
         mRiskCheck = findPreference("prefs_key_market_bypass_risk_check");
+        mDeviceModify = findPreference("prefs_key_market_device_modify_new1");
 
         if (isPad()) {
             setFuncHint(mRiskCheck, 1);
         }
 
-        int currentValue = Integer.parseInt(getSharedPreferences().getString("prefs_key_market_device_modify_new", "0"));
+        int configuredMode = DeviceModifyModePolicy.resolveConfiguredMode(getSharedPreferences().getAll());
+        boolean enabled = configuredMode != 0;
+        mDeviceModify.setPersistent(false);
+        mDeviceModify.setChecked(enabled);
+        mDeviceModify.setPersistent(true);
+        // Legacy preset modes stay enabled; only mode 1 uses the custom text fields.
+        setCustomFieldsVisible(configuredMode == 1);
+        mDeviceModify.setOnPreferenceChangeListener((preference, value) -> {
+            setCustomFieldsVisible((Boolean) value);
+            return true;
+        });
+    }
 
-        if (currentValue == 1) {
-            mDevice.setVisible(true);
-            mModel.setVisible(true);
-            mManufacturer.setVisible(true);
-        } else {
-            mDevice.setVisible(false);
-            mModel.setVisible(false);
-            mManufacturer.setVisible(false);
-        }
+    private void setCustomFieldsVisible(boolean visible) {
+        mDevice.setVisible(visible);
+        mModel.setVisible(visible);
+        mManufacturer.setVisible(visible);
     }
 }

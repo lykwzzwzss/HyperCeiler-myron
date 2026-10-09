@@ -33,6 +33,16 @@ public class NavigationSettings extends DashboardFragment {
     }
 
     @Override
+    public boolean isPreferenceAvailableForSearch(String key) {
+        if (key.equals("prefs_key_system_ui_navigation_handle_custom_height")
+                || key.equals("prefs_key_system_ui_navigation_handle_custom_width")
+                || key.equals("prefs_key_system_ui_navigation_handle_custom_width_land")) {
+            return false;
+        }
+        return super.isPreferenceAvailableForSearch(key);
+    }
+
+    @Override
     public void initPrefs() {
         navigation = findPreference("prefs_key_system_ui_hide_navigation_bar");
         navigation.setOnPreferenceChangeListener((preference, o) -> {

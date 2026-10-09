@@ -27,6 +27,7 @@ import com.sevtinge.hyperceiler.libhook.base.BaseLoad;
 import com.sevtinge.hyperceiler.libhook.rules.systemsettings.AllowManageAllNotifications;
 import com.sevtinge.hyperceiler.libhook.rules.systemsettings.MoreNotificationSettings;
 import com.sevtinge.hyperceiler.libhook.rules.systemui.controlcenter.AutoDismissExpandedPopupsHook;
+import com.sevtinge.hyperceiler.libhook.rules.systemui.controlcenter.BlurEnable;
 import com.sevtinge.hyperceiler.libhook.rules.systemui.controlcenter.ControlCenterStyle;
 import com.sevtinge.hyperceiler.libhook.rules.systemui.controlcenter.CustomCarrierText;
 import com.sevtinge.hyperceiler.libhook.rules.systemui.controlcenter.DisableTransparent;
@@ -34,6 +35,10 @@ import com.sevtinge.hyperceiler.libhook.rules.systemui.controlcenter.ExpandNotif
 import com.sevtinge.hyperceiler.libhook.rules.systemui.controlcenter.MuteVisibleNotifications;
 import com.sevtinge.hyperceiler.libhook.rules.systemui.controlcenter.NotificationColor;
 import com.sevtinge.hyperceiler.libhook.rules.systemui.controlcenter.NotificationImportanceHyperOSFix;
+import com.sevtinge.hyperceiler.libhook.rules.systemui.controlcenter.QQSGrid;
+import com.sevtinge.hyperceiler.libhook.rules.systemui.controlcenter.QSGrid;
+import com.sevtinge.hyperceiler.libhook.rules.systemui.controlcenter.RemoveNotifNumLimit;
+import com.sevtinge.hyperceiler.libhook.rules.systemui.controlcenter.ShadeHeaderGradientBlur;
 import com.sevtinge.hyperceiler.libhook.rules.systemui.controlcenter.NotificationWeather;
 import com.sevtinge.hyperceiler.libhook.rules.systemui.controlcenter.OldWeather;
 import com.sevtinge.hyperceiler.libhook.rules.systemui.controlcenter.RedirectToNotificationChannelSetting;
@@ -64,6 +69,8 @@ import com.sevtinge.hyperceiler.libhook.rules.systemui.lockscreen.KeepNotificati
 import com.sevtinge.hyperceiler.libhook.rules.systemui.lockscreen.LockScreenDoubleTapToSleep;
 import com.sevtinge.hyperceiler.libhook.rules.systemui.lockscreen.NotificationShowOnKeyguard;
 import com.sevtinge.hyperceiler.libhook.rules.systemui.lockscreen.ScramblePIN;
+import com.sevtinge.hyperceiler.libhook.rules.systemui.navigation.HandleLineCustom;
+import com.sevtinge.hyperceiler.libhook.rules.systemui.navigation.NavigationCustom;
 import com.sevtinge.hyperceiler.libhook.rules.systemui.navigation.RotationButtonB;
 import com.sevtinge.hyperceiler.libhook.rules.systemui.other.AutoSEffSwitchForSystemUi;
 import com.sevtinge.hyperceiler.libhook.rules.systemui.other.BrightnessPct;
@@ -72,6 +79,7 @@ import com.sevtinge.hyperceiler.libhook.rules.systemui.other.DisableInfinitymode
 import com.sevtinge.hyperceiler.libhook.rules.systemui.other.DisableMiuiMultiWinSwitch;
 import com.sevtinge.hyperceiler.libhook.rules.systemui.other.GuidedAccessDialogBlock;
 import com.sevtinge.hyperceiler.libhook.rules.systemui.other.MonetThemeOverlay;
+import com.sevtinge.hyperceiler.libhook.rules.systemui.other.ToastBlur;
 import com.sevtinge.hyperceiler.libhook.rules.systemui.other.NotificationFreeform;
 import com.sevtinge.hyperceiler.libhook.rules.systemui.other.RemoveMiuiMultiWinSwitch;
 import com.sevtinge.hyperceiler.libhook.rules.systemui.other.UiLockApp;
@@ -180,10 +188,18 @@ public class SystemUIB extends BaseLoad {
 
         // 导航栏
         initHook(RotationButtonB.INSTANCE, PrefsBridge.getStringAsInt("system_framework_other_rotation_button_int", 0) != 0);
+        initHook(new HandleLineCustom(), PrefsBridge.getBoolean("system_ui_navigation_handle_custom"));
+        initHook(new NavigationCustom(), PrefsBridge.getBoolean("system_ui_navigation_custom"));
 
         // 控制与通知中心
         initHook(new QSColor(), PrefsBridge.getBoolean("system_ui_control_center_qs_open_color") || PrefsBridge.getBoolean("system_ui_control_center_qs_big_open_color"));
         initHook(OldWeather.INSTANCE, PrefsBridge.getBoolean("system_ui_control_center_show_weather"));
+        initHook(new ShadeHeaderGradientBlur(), PrefsBridge.getBoolean("system_ui_shade_header_gradient_blur"));
+        initHook(new BlurEnable(), PrefsBridge.getBoolean("system_ui_control_center_statusbar_blur"));
+        initHook(new RemoveNotifNumLimit(), PrefsBridge.getBoolean("system_ui_control_center_remove_notif_num_limit"));
+        boolean oldControlCenter = PrefsBridge.getBoolean("system_control_center_old_enable");
+        initHook(new QSGrid(), oldControlCenter);
+        initHook(new QQSGrid(), oldControlCenter);
         initHook(NotificationWeather.INSTANCE, PrefsBridge.getBoolean("system_ui_control_center_show_weather"));
         initHook(AutoDismissExpandedPopupsHook.INSTANCE, PrefsBridge.getBoolean("system_ui_control_center_auto_clean_expand_notification"));
         initHook(ExpandNotificationKt.INSTANCE, !PrefsBridge.getStringSet("system_ui_control_center_expand_notification").isEmpty());
@@ -216,15 +232,17 @@ public class SystemUIB extends BaseLoad {
         int diBgMode = PrefsBridge.getStringAsInt("system_ui_island_media_control_background_mode", 0);
         boolean pUnlockActions = PrefsBridge.getBoolean("system_ui_control_center_media_control_unlock_custom_actions");
         boolean pLayout = PrefsBridge.getBoolean("system_ui_control_center_media_control_media_button_layout_switch");
+        boolean pLayoutIsland = PrefsBridge.getBoolean("system_ui_island_media_control_media_button_layout_switch");
         boolean pSize = PrefsBridge.getBoolean("system_ui_control_center_media_control_media_button_size_switch");
+        boolean pSizeIsland = PrefsBridge.getBoolean("system_ui_island_media_control_media_button_size_switch");
         boolean pProgressNc = PrefsBridge.getBoolean("system_ui_control_center_media_control_progress_on");
         boolean pProgressIsland = PrefsBridge.getBoolean("system_ui_island_media_control_progress_on");
         boolean pAlwaysDark = PrefsBridge.getBoolean("system_ui_control_center_media_control_always_dark");
         initHook(NewUnlockCustomActions.INSTANCE, pUnlockActions);
         initHook(MediaControlBgFactory.INSTANCE, ncBgMode != 0 || diBgMode != 0);
         initHook(CustomBackground.INSTANCE, ncBgMode != 0 || diBgMode != 0);
-        initHook(MediaViewLayout.INSTANCE, pLayout);
-        initHook(MediaViewSize.INSTANCE, pSize);
+        initHook(MediaViewLayout.INSTANCE, pLayout || pLayoutIsland);
+        initHook(MediaViewSize.INSTANCE, pSize || pSizeIsland);
         initHook(MediaSeekBar.INSTANCE, pProgressNc || pProgressIsland);
         initHook(AmbientLight.INSTANCE, ncBgMode == 0 || diBgMode == 0);
         initHook(AlwaysDark.INSTANCE, ncBgMode == 0 && pAlwaysDark);
@@ -237,6 +255,7 @@ public class SystemUIB extends BaseLoad {
             PrefsBridge.getBoolean("system_framework_guided_access")
                 && PrefsBridge.getBoolean("system_framework_guided_access_block_dialog"));
         initHook(new MonetThemeOverlay(), PrefsBridge.getBoolean("system_ui_monet_overlay_custom"));
+        initHook(new ToastBlur(), PrefsBridge.getBoolean("system_framework_background_blur_toast"));
         initHook(new AllowManageAllNotifications(), PrefsBridge.getBoolean("system_framework_allow_manage_all_notifications"));
         initHook(new NotificationFreeform(), PrefsBridge.getBoolean("system_ui_notification_freeform"));
         initHook(new BrightnessPct(), PrefsBridge.getBoolean("system_showpct_title"));

@@ -43,7 +43,15 @@ public class UnlockNeverSleepScreen extends BaseHook {
             }
         });
 
-        findAndHookConstructor("com.android.settings.KeyguardTimeoutListPreference", Context.class, AttributeSet.class, new IMethodHook() {
+        Class<?> timeoutPreference = findClassIfExists(
+            "com.android.settings.KeyguardTimeoutDropDownPreference");
+        if (timeoutPreference == null) {
+            timeoutPreference = findClassIfExists(
+                "com.android.settings.KeyguardTimeoutListPreference");
+        }
+        if (timeoutPreference == null) return;
+
+        findAndHookConstructor(timeoutPreference, Context.class, AttributeSet.class, new IMethodHook() {
             @Override
             public void before(HookParam param) {
                 creatingPreference.set(true);

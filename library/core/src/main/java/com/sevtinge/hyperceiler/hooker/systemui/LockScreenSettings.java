@@ -43,6 +43,36 @@ public class LockScreenSettings extends DashboardFragment {
     }
 
     @Override
+    public boolean isPreferenceAvailableForSearch(String key) {
+        if (isPad() && (key.equals("prefs_key_system_ui_lock_screen_bottom_left_button")
+                || key.equals("prefs_key_system_ui_lock_screen_hide_camera")
+                || key.equals("prefs_key_system_ui_lock_screen_blur_button"))) {
+            return false;
+        }
+        if (isMoreHyperOSVersion(3f)) {
+            if (key.equals("prefs_key_system_ui_lock_screen_bottom_left_button")
+                    || key.equals("prefs_key_system_ui_lock_screen_hide_camera")) {
+                return false;
+            }
+            if (!isPad() && (key.equals("prefs_key_system_ui_lock_screen_show_charging_cv")
+                    || key.equals("prefs_key_system_ui_show_charging_c_more")
+                    || key.equals("prefs_key_system_ui_show_battery_temperature")
+                    || key.equals("prefs_key_system_ui_lock_screen_show_spacing_value")
+                    || key.equals("prefs_key_system_ui_lock_screen_show_spacing")
+                    || key.equals("prefs_key_system_ui_lock_screen_linkage_anim")
+                    || key.equals("prefs_key_system_ui_lock_screen_linkage_anim_on")
+                    || key.equals("prefs_key_system_ui_lock_screen_linkage_anim_off"))) {
+                return false;
+            }
+        } else if (isMoreSmallVersion(200, 2f)
+                && (key.equals("prefs_key_system_ui_lock_screen_bottom_left_button")
+                || key.equals("prefs_key_system_ui_lock_screen_hide_camera"))) {
+            return false;
+        }
+        return super.isPreferenceAvailableForSearch(key);
+    }
+
+    @Override
     public void initPrefs() {
         mHideRightButton = findPreference("prefs_key_system_ui_lock_screen_hide_camera");
         mHideLeftButtonNew = findPreference("prefs_key_system_ui_lock_screen_bottom_left_button");
