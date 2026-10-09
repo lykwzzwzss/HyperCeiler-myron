@@ -95,3 +95,14 @@
 | 遗留项 | 调整检测版本 (`prefs_key_theme_manager_new_version_code_modify`) | 保留有效旧支持，K90 入口/搜索按当前门槛处理 |
 | 遗留项 | 添加清空剪贴板按钮 (`prefs_key_add_clipboard_clear`) | 保留有效旧支持，K90 入口/搜索按当前门槛处理 |
 | 遗留项 | prefs_key_various_enable_super_function (`prefs_key_various_enable_super_function`) | 保留有效旧支持，K90 入口/搜索按当前门槛处理 |
+
+
+## 4700 启动日志后的补充修复
+
+4700 已在 K90 安装并重启，ADB 启动日志发现两条本模块接口错误。本次修复快速截图的 `getScreenshotChordLongPressDelay():long` 目标迁移到 `KeyGestureController`，并保留旧 `PhoneWindowManager` 的精确签名回退；温控事件服务迁移到 `power.thermal.ThermalManagerService.postEventListenerLocked(Temperature, IThermalEventListener, Integer):void`，保留旧路径。
+
+温控事件选项只沿用原选项的事件回调屏蔽范围；独立的“禁止温控降低亮度上限”仍由显示策略 Hook 处理。温度记录、关机处理、status/headroom 回调及 HAL 未被这次修改。
+
+导航条颜色复查保留原映射：浅色背景颜色对应 ROM 的 dark 图标资源，深色背景颜色对应 light 图标资源。不能仅按资源 dark/light 名称反转偏好。
+
+用户选择自行手动测试。4700 的启动、首页和原生媒体音量上限 150 已读取确认；各项实际效果和本次补充 Hook 的运行结果仍待新版手动验收。

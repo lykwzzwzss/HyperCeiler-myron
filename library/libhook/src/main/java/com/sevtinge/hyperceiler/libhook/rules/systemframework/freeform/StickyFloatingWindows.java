@@ -186,10 +186,14 @@ public class StickyFloatingWindows extends BaseHook {
 
             @Override
             public void before(HookParam param) {
+                // The K90 ROM method is startActivityFromRecents(int,int,int,SafeActivityOptions).
+                // Null options are valid for a plain recents launch; let the native path handle it.
+                if (param.getArgs().length < 4) return;
                 Object safeOptions = param.getArgs()[3];
+                if (safeOptions == null) return;
                 ActivityOptions options = (ActivityOptions) callMethod(safeOptions, "getOptions", param.getThisObject());
                 String pkgName = getTaskPackageName(param.getThisObject(), (int) param.getArgs()[2], options);
-                if (fwBlackList.contains(pkgName)) return;
+                if (pkgName == null || fwBlackList.contains(pkgName)) return;
                 if (fwApps.containsKey(pkgName)) {
                     Context mContext = (Context) getObjectField(getObjectField(param.getThisObject(), "mService"), "mContext");
                     options = patchActivityOptions(mContext, options, pkgName, MiuiMultiWindowUtils);
@@ -304,7 +308,7 @@ public class StickyFloatingWindows extends BaseHook {
                 callMethod(mRootWindowContainer, "anyTaskForId", taskId, 0);
         if (task == null) return null;
         Intent intent = (Intent) getObjectField(task, "intent");
-        return intent == null ? null : intent.getComponent().getPackageName();
+        return intent == null || intent.getComponent() == null ? null : intent.getComponent().getPackageName();
     }
 
     public static String serializeFwApps() {

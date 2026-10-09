@@ -18,19 +18,49 @@
 */
 package com.sevtinge.hyperceiler.libhook.rules.systemframework.others;
 
+import com.sevtinge.hyperceiler.common.log.XposedLog;
 import com.sevtinge.hyperceiler.libhook.base.BaseHook;
 import io.github.lingqiqi5211.ezhooktool.xposed.java.IMethodHook;
-
 import io.github.lingqiqi5211.ezhooktool.xposed.common.HookParam;
 
 public class QuickScreenshot extends BaseHook {
     @Override
     public void init() {
-        findAndHookMethod("com.android.server.policy.PhoneWindowManager", "getScreenshotChordLongPressDelay", new IMethodHook() {
+        IMethodHook removeDelay = new IMethodHook() {
             @Override
-            public void before(HookParam param){
+            public void before(HookParam param) {
                 param.setResult(0L);
             }
-        });
+        };
+
+        // Android 17 moved screenshot chord handling out of PhoneWindowManager.
+        // Prefer the active controller, and retain the old path for earlier releases.
+        if (tryHook("com.android.server.input.KeyGestureController", removeDelay)) {
+            XposedLog.i(TAG, "Screenshot chord delay disabled through KeyGestureController");
+        } else if (tryHook("com.android.server.policy.PhoneWindowManager", removeDelay)) {
+            XposedLog.i(TAG, "Screenshot chord delay disabled through PhoneWindowManager");
+        } else {
+            XposedLog.w(TAG, "Screenshot chord delay hook unavailable on this ROM");
+        }
+    }
+
+    private boolean tryHook(String className, IMethodHook hook) {
+        Class<?> targetClass = findClassIfExists(className);
+        if (targetClass == null) return false;
+
+        for (java.lang.reflect.Method method : targetClass.getDeclaredMethods()) {
+            if (!method.getName().equals("getScreenshotChordLongPressDelay")
+                || method.getParameterCount() != 0
+                || method.getReturnType() != Long.TYPE) {
+                continue;
+            }
+            try {
+                return hookMethod(method, hook) != null;
+            } catch (Throwable t) {
+                XposedLog.w(TAG, "Unable to hook " + className + ".getScreenshotChordLongPressDelay(): " + t);
+                return false;
+            }
+        }
+        return false;
     }
 }
