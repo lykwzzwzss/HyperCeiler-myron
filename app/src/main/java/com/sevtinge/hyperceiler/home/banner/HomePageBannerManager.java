@@ -2,11 +2,9 @@ package com.sevtinge.hyperceiler.home.banner;
 
 import static com.sevtinge.hyperceiler.common.log.LogStatusManager.IS_LOGGER_ALIVE;
 import static com.sevtinge.hyperceiler.common.utils.api.ProjectApi.isRelease;
-import static com.sevtinge.hyperceiler.libhook.utils.api.DeviceHelper.System.SUPPORT_FULL;
 import static com.sevtinge.hyperceiler.libhook.utils.api.DeviceHelper.System.getBaseOs;
 import static com.sevtinge.hyperceiler.libhook.utils.api.DeviceHelper.System.getHost;
 import static com.sevtinge.hyperceiler.libhook.utils.api.DeviceHelper.System.getRomAuthor;
-import static com.sevtinge.hyperceiler.libhook.utils.api.DeviceHelper.System.getSupportStatus;
 import static com.sevtinge.hyperceiler.libhook.utils.api.DeviceHelper.System.getSystemVersionIncremental;
 import static com.sevtinge.hyperceiler.libhook.utils.api.PropUtils.getProp;
 import static com.sevtinge.hyperceiler.utils.LSPosedScopeHelper.mNotInSelectedScope;
@@ -190,13 +188,6 @@ public class HomePageBannerManager {
                 "warning_framework",
                 FrameworkStatusManager.getBannerSummary(context),
                 BannerCallback.ACTION_OPEN_FRAMEWORK_WARNING_HELP
-            );
-        }
-        if (getSupportStatus() != SUPPORT_FULL) {
-            return createWarningBanner(
-                "warning_sysver",
-                context.getString(R.string.headtip_warn_unsupport_sysver),
-                null
             );
         }
         return null;
