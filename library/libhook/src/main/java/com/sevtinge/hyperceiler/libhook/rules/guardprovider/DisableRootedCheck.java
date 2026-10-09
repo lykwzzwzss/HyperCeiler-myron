@@ -21,6 +21,7 @@ package com.sevtinge.hyperceiler.libhook.rules.guardprovider;
 
 import com.sevtinge.hyperceiler.common.log.XposedLog;
 import com.sevtinge.hyperceiler.libhook.base.BaseHook;
+import com.sevtinge.hyperceiler.libhook.utils.api.RootCheckResult;
 
 import org.luckypray.dexkit.query.FindMethod;
 import org.luckypray.dexkit.query.matchers.MethodMatcher;
@@ -34,58 +35,20 @@ import io.github.lingqiqi5211.ezhooktool.xposed.java.IMethodHook;
 /**
  * 阻止 guardprovider 将设备判定为已 root。
  *
- * 本机（myron / OS4）实测反编译 base.apk：guardprovider 有**两处独立**的 root 检测，
- * 而本机实际命中的是第 1 处。
+ * DexKit 通过两个日志字符串定位 root 管理应用检测方法，不绑定混淆名称。
+ * K90 / OS4 / guardprovider 3.1.4-20260902.0 的 oe2.C 返回 boolean，
+ * 作者此前观察到的 oe2.x 返回包名 String。分别返回 false / null，
+ * 避免把 null 作为 boolean 方法的结果。未知返回类型不安装此 hook。
  *
- * <h3>1) root 管理应用检测（本机真正的判定来源）</h3>
- * {@code Loe2.b} 是待检测的包名数组，实测内容为
- * {@code {me.bmax.apatch, me.weishu.kernelsu, com.topjohnwu.magisk}}。
- * {@code Loe2.x(GuardApplication)String} 逐个调用
- * {@code PackageManager.getApplicationInfo()} 探测，命中即打印
- * {@code "root manager found: "} 并返回该包名。
- * 本机装了 KernelSU（{@code me.weishu.kernelsu}），因此必然命中。
- *
- * <h3>2) su 文件检测（本机不会执行）</h3>
- * {@code Lse2.<clinit>}（该类仅此一个方法 + 一个 {@code PUBLIC STATIC FINAL} 字段 a）：
- * <pre>
- *   Boolean rooted = false;
- *   if (Build.TAGS != null &amp;&amp; Build.TAGS.contains("test-keys")) {
- *       // test-keys 是「是否继续检查 su 文件」的前置开关
- *       for (String p : {"/system/bin/su", "/system/xbin/su"}) {
- *           if (new File(p).exists()) { rooted = true; break; }
- *       }
- *   }
- *   if (rooted) Lal2.w("Current device is rooted");
- *   Lse2.a = rooted;
- * </pre>
- * 本机 {@code ro.build.tags} = release-keys，test-keys 分支不命中，故这段不会执行。
- *
- * <h3>为什么旧实现失效</h3>
- * 旧实现用 DexKit 匹配 {@code usingStrings("/system/bin/") + returnType(boolean)}，
- * 只对应第 2 处：引用该字符串的方法现已全部返回 void（且多为 MiPush / onetrack
- * 埋点 SDK 的日志脱敏代码），早已失配。
- * 改走 DexKit 定位 {@code Lse2.<clinit>} 同样不可行 —— 反射层拿不到
- * {@code <clinit>} 的 Method 对象，DexKit 解析该成员会直接失败
- * （报错：required DexKit member list not found: CheckRoot）；
- * 而 {@code Lse2.a} 是 static final，Android 12+ 用反射改写会被 ART 拒绝。
- *
- * <h3>本实现</h3>
- * <ul>
- *   <li>主：DexKit 按字符串 AND 定位 {@code Loe2.x}（{@code "root manager found: "}
- *       与 {@code "getApplicationInfo failed: "} 在全 dex 均唯一），hook 使其返回
- *       null，即「未发现 root 管理应用」。</li>
- *   <li>兜底：拦截 {@link File#exists()}，仅对两个 su 路径返回 false，
- *       覆盖第 2 处检测（本机虽不触发，但可防御 ROM 变化）。</li>
- * </ul>
- *
- * 该 hook 由设置项 {@code guard_provider_disable_root_check} 控制。
+ * su 文件兜底仅在 guardprovider 进程内处理两个明确路径。
+ * 设置项：guard_provider_disable_root_check。
  */
 public class DisableRootedCheck extends BaseHook {
 
-    /** su 文件检测依次探测的路径，见上文 {@code Lse2.<clinit>} 控制流。 */
+    /** su 文件检测依次探测的路径。 */
     private static final String[] SU_PATHS = {"/system/bin/su", "/system/xbin/su"};
 
-    /** 定位到的 root 管理应用检测方法（Loe2.x）。 */
+    /** 定位到的 root 管理应用检测方法。 */
     private Method mRootManagerCheckMethod;
 
     @Override
@@ -96,7 +59,7 @@ public class DisableRootedCheck extends BaseHook {
     @Override
     protected boolean initDexKit() {
         try {
-            // 两个字符串在全 dex 均唯一且同属 Loe2.x，AND 可精确定位。
+            // 按两个日志字符串共同定位，兼容混淆名称及返回类型变化。
             mRootManagerCheckMethod = requiredMember("RootManagerCheck", bridge -> bridge.findMethod(FindMethod.create()
                 .matcher(MethodMatcher.create()
                     .usingStrings("root manager found: ", "getApplicationInfo failed: ")
@@ -111,15 +74,17 @@ public class DisableRootedCheck extends BaseHook {
     @Override
     public void init() {
         // 1) root 管理应用检测：让它认为一个都没找到（本机真正的判定来源）
-        if (mRootManagerCheckMethod != null) {
+        if (mRootManagerCheckMethod != null && RootCheckResult.supports(mRootManagerCheckMethod.getReturnType())) {
             XposedLog.d(TAG, getPackageName(), "hooking root manager check: " + mRootManagerCheckMethod);
             hookMethod(mRootManagerCheckMethod, new IMethodHook() {
                 @Override
                 public void before(HookParam param) {
-                    // 返回 null == 未发现 root 管理应用
-                    param.setResult(null);
+                    // K90 3.1.4 返回 boolean，旧版返回包名 String。
+                    param.setResult(RootCheckResult.notRooted(mRootManagerCheckMethod.getReturnType()));
                 }
             });
+        } else if (mRootManagerCheckMethod != null) {
+            XposedLog.w(TAG, getPackageName(), "unsupported root check return type: " + mRootManagerCheckMethod.getReturnType());
         }
 
         // 2) su 文件检测：对两个 su 路径一律报告「不存在」

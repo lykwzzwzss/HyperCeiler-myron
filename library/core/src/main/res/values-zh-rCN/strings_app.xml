@@ -1810,4 +1810,6 @@
     <string name="custom_hook_mode">选择模式</string>
     <string name="open_source">开源项目</string>
     <string name="close_source">闭源项目</string>
+    <string name="system_framework_disable_thermal_brightness_cap">禁止高温降低亮度上限</string>
+    <string name="system_framework_disable_thermal_brightness_cap_desc">适配 Android 17 / HyperOS 4，仅解除显示软件温控限亮。可能增加发热和耗电，修改后重启手机生效。</string>
 </resources>

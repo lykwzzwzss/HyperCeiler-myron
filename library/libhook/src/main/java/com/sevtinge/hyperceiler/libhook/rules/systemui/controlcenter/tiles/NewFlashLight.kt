@@ -37,7 +37,10 @@ import io.github.lingqiqi5211.ezhooktool.xposed.dsl.hookAllConstructors
 import org.json.JSONException
 import org.json.JSONObject
 import kotlin.math.roundToInt
-import java.util.concurrent.Executors
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.TimeUnit
+import java.io.File
 
 /**
  * 手电筒亮度调节磁贴
@@ -60,9 +63,14 @@ object NewFlashLight : TileUtils() {
     private var mode: Int = 0
     private var lastFlash: Int = -1
     private var isListening: Boolean = false
-    private var isHook: Boolean = false
+    @Volatile private var isHook: Boolean = false
+    @Volatile private var flashSession: Long = 0
+    private var torchStrength: TorchStrengthController? = null
+    private var backendChecked = false
+    private var legacyAvailable = false
     private var brightnessObserver: ContentObserver? = null
-    private val writeExecutor = Executors.newSingleThreadExecutor()
+    private val writeExecutor = ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS,
+        LinkedBlockingQueue<Runnable>(1), ThreadPoolExecutor.DiscardOldestPolicy())
 
     override fun onCreateTileConfig(): TileConfig {
         return TileConfig.Builder()
@@ -75,8 +83,11 @@ object NewFlashLight : TileUtils() {
         // 读取配置
         mode = PrefsBridge.getStringAsInt("security_flash_light_switch", 0)
 
-        // 设置文件权限
-        setPermission(TORCH)
+        registerHotReloadCleanup {
+            isHook = false
+            flashSession++
+            writeExecutor.shutdownNow()
+        }
 
         // Hook 相关方法
         initBrightnessControllerHook()
@@ -95,11 +106,15 @@ object NewFlashLight : TileUtils() {
         val flashController = ctx.getField<Any>("flashlightController")
         val isEnabled = flashController?.callMethod("isEnabled") as? Boolean ?: false
 
-        // 同步手电筒状态到 Settings
-        if (isEnabled) {
-            setFlashLightEnabled(context, 1)
-        } else {
-            setFlashLightEnabled(context, 0)
+        initBackend(context)
+        val active = isEnabled && (torchStrength != null || legacyAvailable)
+        if (active != isHook) {
+            flashSession++
+            isHook = active
+        }
+        // Strength callbacks must not reset the slider or replay saved brightness.
+        if (isFlashLightEnabled(context) != active) {
+            setFlashLightEnabled(context, if (active) 1 else 0)
         }
 
         // 返回 null 使用原有状态逻辑
@@ -125,6 +140,7 @@ object NewFlashLight : TileUtils() {
      * 设置亮度监听器
      */
     private fun setupBrightnessListener(context: Context, controller: Any) {
+        initBackend(context)
         if (isListening) {
             XposedLog.d(TAG, "Already listening")
             return
@@ -135,7 +151,9 @@ object NewFlashLight : TileUtils() {
                 super.onChange(selfChange, uri)
 
                 lastFlash = -1
-                isHook = isFlashLightEnabled(context)
+                val active = isFlashLightEnabled(context) && (torchStrength != null || legacyAvailable)
+                if (active != isHook) flashSession++
+                isHook = active
 
                 if (isHook) {
                     val brightness = getFlashBrightness(context)
@@ -153,6 +171,11 @@ object NewFlashLight : TileUtils() {
                             XposedLog.e(TAG, "Failed to parse brightness JSON", e)
                         }
                     }
+                } else if (torchStrength != null) {
+                    // Show the unchanged screen brightness after leaving torch mode.
+                    val handler = getObjectField(controller, "mBackgroundHandler") as? Handler
+                    val update = getObjectField(controller, "mUpdateSliderRunnable") as? Runnable
+                    if (handler != null && update != null) handler.post(update)
                 }
             }
         }
@@ -176,7 +199,7 @@ object NewFlashLight : TileUtils() {
         val lambdaClass = findClassIfExists(
             $$$"com.android.systemui.controlcenter.policy.MiuiBrightnessController$$ExternalSyntheticLambda0"
         )
-        lambdaClass?.let {
+        lambdaClass?.takeIf { cls -> cls.declaredMethods.any { it.name == "run" } }?.let {
             it.beforeHookMethod("run") { param ->
                 if (isHook) {
                     param.result = null
@@ -187,7 +210,7 @@ object NewFlashLight : TileUtils() {
         val innerClass = findClassIfExists(
             $$"com.android.systemui.controlcenter.policy.MiuiBrightnessController$2"
         )
-        innerClass?.let {
+        innerClass?.takeIf { cls -> cls.declaredMethods.any { it.name == "run" } }?.let {
             it.beforeHookMethod("run") { param ->
                 if (isHook) {
                     param.result = null
@@ -195,8 +218,23 @@ object NewFlashLight : TileUtils() {
             }
         }
 
-        findClass("com.android.systemui.controlcenter.policy.MiuiBrightnessController")
-            .beforeHookMethod("onStop", Int::class.java) { param ->
+        val controllerClass = findClass("com.android.systemui.controlcenter.policy.MiuiBrightnessController")
+        controllerClass.beforeHookMethod("onChanged") { param ->
+            if (!isHook || torchStrength == null) return@beforeHookMethod
+            // K90 OS4 also has HyperOSBrightnessPolicyV1, which bypasses the old runnable.
+            // Own the user event before either screen-brightness write path is reached.
+            param.result = null
+            setBooleanField(param.thisObject, "isUserSliding", param.args[1] as Boolean)
+            if (getObjectField(param.thisObject, "mExternalChange") == true) return@beforeHookMethod
+            val slider = param.args[3] as Int
+            (getObjectField(param.thisObject, "mSliderAnimator") as? android.animation.ValueAnimator)?.cancel()
+            getObjectField(param.thisObject, "mToggleSlidersController")
+                ?.callMethod("setValue", slider, param.args[0])
+            val brightnessUtils = findClass("com.android.systemui.controlcenter.policy.BrightnessUtils")
+            lastFlash = calculateBrightness(brightnessUtils, slider, 0f, 1f)
+            writeFile(lastFlash)
+        }
+        controllerClass.beforeHookMethod("onStop", Int::class.java) { param ->
                 if (isHook && lastFlash != -1) {
                     val context = getObjectField(param.thisObject, "mContext") as Context
                     val slider = param.args[0] as Int
@@ -206,6 +244,11 @@ object NewFlashLight : TileUtils() {
                         put("brightness", lastFlash)
                     }
                     setFlashBrightness(context, jsonObject.toString())
+                }
+                if (isHook && torchStrength != null) {
+                    // Do not schedule the screen/slider consistency check in torch mode.
+                    setBooleanField(param.thisObject, "isUserSliding", false)
+                    param.result = null
                 }
             }
     }
@@ -225,7 +268,7 @@ object NewFlashLight : TileUtils() {
                 Float::class.java,
                 if (paramOrder) Float::class.java else Int::class.java,
             ) { param ->
-                if (!isHook) return@beforeHookMethod
+                if (!isHook || torchStrength != null) return@beforeHookMethod
 
                 var min = param.args[if (paramOrder) 1 else 0] as Float
                 var max = param.args[if (paramOrder) 2 else 1] as Float
@@ -294,6 +337,10 @@ object NewFlashLight : TileUtils() {
             MathUtils.exp((norm - c) / a) + b
         }
 
+        val normalized = (MathUtils.constrain(exp, 0.0f, 12.0f) / 12.0f).coerceIn(0f, 1f)
+        torchStrength?.let { backend ->
+            return (1 + normalized * (backend.maxLevel - 1)).roundToInt().coerceIn(1, backend.maxLevel)
+        }
         val finalMin = if (min < 10) 12f else min
         val end = MathUtils.lerpNew(finalMin, max, MathUtils.constrain(exp, 0.0f, 12.0f) / 12.0f)
 
@@ -311,29 +358,26 @@ object NewFlashLight : TileUtils() {
      */
     private fun setSliderValue(controller: Any, targetValue: Int) {
         runCatching {
-            val isUserSliding = getObjectField(controller, "isUserSliding") as? Boolean ?: false
+            if (getObjectField(controller, "isUserSliding") == true) return
             val sliderController = getObjectField(controller, "mToggleSlidersController") ?: return
-
-            if (!isUserSliding) {
-                val initialized = getObjectField(controller, "mControlValueInitialized") as? Boolean ?: false
-
-                if (!initialized) {
-                    // 尝试设置值
-                    runCatching {
-                        callMethod(sliderController, "setValue", targetValue, false)
-                    }.recoverCatching {
-                        callMethod(sliderController, "setValue", targetValue)
-                    }.recoverCatching {
-                        setObjectField(sliderController, "sliderValue", targetValue)
-                        refreshSliders(sliderController, targetValue)
-                    }.onSuccess {
-                        XposedLog.d(TAG, "Set slider value successfully")
-                    }.onFailure {
-                        XposedLog.e(TAG, "Failed to set slider value", it)
-                    }
-
-                    setObjectField(controller, "mControlValueInitialized", true)
-                }
+            val externalChange = getObjectField(controller, "mExternalChange") == true
+            // Programmatic slider updates must not write the screen or torch brightness.
+            setBooleanField(controller, "mExternalChange", true)
+            try {
+                runCatching {
+                    // K90 OS4: setValue(int, ToggleSliderBase), null updates every slider.
+                    callMethod(sliderController, "setValue", targetValue, null)
+                }.recoverCatching {
+                    callMethod(sliderController, "setValue", targetValue, false)
+                }.recoverCatching {
+                    callMethod(sliderController, "setValue", targetValue)
+                }.recoverCatching {
+                    setObjectField(sliderController, "sliderValue", targetValue)
+                    refreshSliders(sliderController, targetValue)
+                }.getOrThrow()
+                setBooleanField(controller, "mControlValueInitialized", true)
+            } finally {
+                setBooleanField(controller, "mExternalChange", externalChange)
             }
         }.onFailure {
             XposedLog.e(TAG, "Error in setSliderValue", it)
@@ -358,6 +402,7 @@ object NewFlashLight : TileUtils() {
      * 读取最大亮度值
      */
     private fun getMaxBrightness(): Int {
+        torchStrength?.let { return it.maxLevel }
         return try {
             val result = ShellUtils.rootExecCmd("cat $MAX_BRIGHTNESS")
             result.trim().toInt()
@@ -367,65 +412,39 @@ object NewFlashLight : TileUtils() {
         }
     }
 
-    /**
-     * 写入亮度值到文件
-     */
+    /** 选择系统相机调光接口，旧设备再回退到已有节点。 */
+    private fun initBackend(context: Context) {
+        if (backendChecked) return
+        backendChecked = true
+        torchStrength = runCatching { TorchStrengthController.create(context) }
+            .onFailure { XposedLog.w(TAG, "Torch strength discovery failed: $it") }.getOrNull()
+        legacyAvailable = torchStrength == null && File(TORCH).exists() && File(MAX_BRIGHTNESS).exists()
+        XposedLog.i(TAG, "Torch backend: camera levels=${torchStrength?.maxLevel}, legacy=$legacyAvailable")
+    }
+
     private fun writeFile(flash: Int) {
-        when (mode) {
-            0, 1 -> {
-                write(TORCH, flash)
-            }
-            2 -> {
-                zero(TORCH, flash)
-            }
-            3 -> {
-                flashSwitch(TORCH, flash)
-            }
-        }
-    }
-
-    private fun zero(path: String, flash: Int) {
-        write(path, 0)
-        write(path, flash)
-    }
-
-    private fun flashSwitch(path: String, flash: Int) {
-        write(path, flash)
-        write(FLASH_SWITCH, 1)
-        write(FLASH_SWITCH, 0)
-    }
-
-    private fun write(path: String, value: Int) {
-        writeExecutor.submit {
+        if (!isHook || writeExecutor.isShutdown) return
+        val session = flashSession
+        writeExecutor.execute {
+            // Discard queued values after the tile switches off or starts a new session.
+            if (!isHook || session != flashSession) return@execute
             try {
-                ProcessBuilder("su", "-c", "echo $value > $path")
-                    .redirectErrorStream(true)
-                    .start()
-            } catch (_: Exception) {}
-        }
-    }
-
-    /**
-     * 设置文件权限
-     */
-    private fun setPermission(path: String) {
-        try {
-            val checkCommand = "test -e $path && echo exists || echo not_found"
-            val result = ShellUtils.execCommand(checkCommand, true).toString()
-
-            if (result.contains("not_found")) {
-                XposedLog.e(TAG, "Path does not exist: $path")
-                return
+                val backend = torchStrength
+                if (backend != null) {
+                    backend.setLevel(flash)
+                } else if (legacyAvailable) {
+                    val level = flash.coerceIn(1, getMaxBrightness().coerceAtLeast(1))
+                    val command = when (mode) {
+                        2 -> "echo 0 > $TORCH; echo $level > $TORCH"
+                        3 -> "echo $level > $TORCH; echo 1 > $FLASH_SWITCH; echo 0 > $FLASH_SWITCH"
+                        else -> "echo $level > $TORCH"
+                    }
+                    // One ordered command; never broaden sysfs permissions with chmod 777.
+                    ShellUtils.rootExecCmd(command)
+                }
+            } catch (e: Exception) {
+                XposedLog.e(TAG, "Torch strength update failed", e)
             }
-
-            val chmodCommand = "chmod 777 $path"
-            val chmodResult = ShellUtils.execCommand(chmodCommand, true).toString()
-
-            if (chmodResult.isNotEmpty() && chmodResult != "null") {
-                XposedLog.w(TAG, "Failed to set permissions for $path: $chmodResult")
-            }
-        } catch (e: Exception) {
-            XposedLog.e(TAG, "Exception setting permissions for $path", e)
         }
     }
 

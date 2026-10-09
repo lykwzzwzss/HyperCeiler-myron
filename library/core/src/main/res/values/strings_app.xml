@@ -1850,4 +1850,6 @@
     <string name="custom_hook_mode">Select mode</string>
     <string name="open_source">Open source projects</string>
     <string name="close_source">Close source projects</string>
+    <string name="system_framework_disable_thermal_brightness_cap">Disable thermal screen brightness cap</string>
+    <string name="system_framework_disable_thermal_brightness_cap_desc">Android 17 / HyperOS 4: ignores software thermal brightness caps. May increase heat and battery use. Restart the phone after changing.</string>
 </resources>

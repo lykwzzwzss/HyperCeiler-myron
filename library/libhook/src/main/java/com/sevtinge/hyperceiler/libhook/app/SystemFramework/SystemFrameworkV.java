@@ -83,6 +83,7 @@ import com.sevtinge.hyperceiler.libhook.rules.systemframework.others.ScreenRotat
 import com.sevtinge.hyperceiler.libhook.rules.systemframework.others.SpeedInstall;
 import com.sevtinge.hyperceiler.libhook.rules.systemframework.others.SystemLockApp;
 import com.sevtinge.hyperceiler.libhook.rules.systemframework.others.ThermalBrightness;
+import com.sevtinge.hyperceiler.libhook.rules.systemframework.others.DisableThermalBrightnessCap;
 import com.sevtinge.hyperceiler.libhook.rules.systemframework.others.UseAndroidPackageInstaller;
 import com.sevtinge.hyperceiler.libhook.rules.systemframework.volume.VolumeDefaultStream;
 import com.sevtinge.hyperceiler.libhook.rules.systemframework.volume.VolumeDisableSafe;
@@ -165,6 +166,7 @@ public class SystemFrameworkV extends BaseLoad {
         initHook(new BypassWakePathChecker(), PrefsBridge.getBoolean("system_framework_bypass_wake_path_checker"));
 
         initHook(new ThermalBrightness(), PrefsBridge.getBoolean("system_framework_other_thermal_brightness"));
+        initHook(new DisableThermalBrightnessCap(), PrefsBridge.getBoolean("system_framework_disable_thermal_brightness_cap"));
         initHook(DisableCleaner.INSTANCE, PrefsBridge.getBoolean("system_framework_other_disable_cleaner"));
         initHook(DisableGestureMonitor.INSTANCE, PrefsBridge.getBoolean("system_framework_other_disable_gesture_monitor"));
         initHook(DisableThermal.INSTANCE, PrefsBridge.getBoolean("system_framework_other_disable_thermal"));

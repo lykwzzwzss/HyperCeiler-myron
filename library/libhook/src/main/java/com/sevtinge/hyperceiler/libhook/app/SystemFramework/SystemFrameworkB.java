@@ -82,6 +82,7 @@ import com.sevtinge.hyperceiler.libhook.rules.systemframework.others.ScreenRotat
 import com.sevtinge.hyperceiler.libhook.rules.systemframework.others.SpeedInstall;
 import com.sevtinge.hyperceiler.libhook.rules.systemframework.others.SystemLockApp;
 import com.sevtinge.hyperceiler.libhook.rules.systemframework.others.ThermalBrightness;
+import com.sevtinge.hyperceiler.libhook.rules.systemframework.others.DisableThermalBrightnessCap;
 import com.sevtinge.hyperceiler.libhook.rules.systemframework.others.UseAndroidPackageInstaller;
 import com.sevtinge.hyperceiler.libhook.rules.systemframework.volume.VolumeDefaultStream;
 import com.sevtinge.hyperceiler.libhook.rules.systemframework.volume.VolumeDisableSafe;
@@ -142,6 +143,7 @@ public class SystemFrameworkB extends BaseLoad {
         initHook(new AntiQues(), PrefsBridge.getBoolean("system_settings_anti_ques"));
         initHook(new DisablePinVerifyPer72h(), PrefsBridge.getBoolean("system_framework_disable_72h_verify"));
         initHook(new ThermalBrightness(), PrefsBridge.getBoolean("system_framework_other_thermal_brightness"));
+        initHook(new DisableThermalBrightnessCap(), PrefsBridge.getBoolean("system_framework_disable_thermal_brightness_cap"));
         initHook(new AppLinkVerify(), PrefsBridge.getBoolean("system_framework_disable_app_link_verify"));
         initHook(NoAccessDeviceLogsRequest.INSTANCE, PrefsBridge.getBoolean("various_disable_access_device_logs"));
         initHook(new LinkTurboToast(), PrefsBridge.getBoolean("system_framework_disable_link_turbo_toast"));
