@@ -10,4 +10,10 @@
 
 修改的手电筒、Root 返回值辅助类和温控亮度 Hook 已通过针对 Android 37、EzHookTool 1.3 / libxposed 102 的局部编译。相机选择、亮度边界、Root 返回值及显示温控 Hook 的独立回归检查通过；不代表安装后的功能实测。
 
-完整 APK 构建尚待完成，依赖 GitHub Packages 上的 fan.miuix 1.0.13.0。未配置正式签名时项目使用测试签名，不能保证覆盖安装其他签名的版本。
+完整 Canary APK 已构建成功：[构建任务 37880619735](https://github.com/lykwzzwzss/HyperCeiler-myron/actions/runs/37880619735)。对应源码提交 4832c3297111be18cc34f40420f68c965f7e9d51，版本代码 4693，版本名称 2.10.166-4832c3297-r4693。构建使用 GitHub Actions 临时只读令牌，未使用本机长期登录令牌。
+
+APK SHA-256：`e156b5ef84798877190320dcdc9d964750516f1b4de28b10df6437a997ca66d1`。
+
+Android 17 / ARM64 包信息及 APK v2 签名校验通过。当前使用测试签名，不能保证覆盖安装其他签名的版本；尚未安装到手机实测。
+
+后续可在 Actions 中手动运行 **K90 APK Build**。
