@@ -16,7 +16,7 @@ object DisableCleaner : BaseHook() {
     override fun init() {
         hookVoidMethods("com.android.server.am.ActivityManagerService", "checkExcessivePowerUsage")
         hookIntMethods("com.android.server.am.ActivityManagerShellCommand", "runKillAll") {
-            it.setResult(0)
+            it.result = 0
         }
         hookBooleanMethods("com.android.server.am.psc.OomAdjuster", "shouldKillExcessiveProcesses")
         hookBooleanMethods("com.android.server.am.OomAdjuster", "shouldKillExcessiveProcesses")
@@ -34,11 +34,11 @@ object DisableCleaner : BaseHook() {
 
     private fun hookVoidMethods(className: String, methodName: String) = hookMethods(
         className, methodName, Void.TYPE
-    ) { it.setResult(null) }
+    ) { it.result = null }
 
     private fun hookBooleanMethods(className: String, methodName: String) = hookMethods(
         className, methodName, java.lang.Boolean.TYPE
-    ) { it.setResult(false) }
+    ) { it.result = false }
 
     private fun hookIntMethods(className: String, methodName: String, callback: (HookParam) -> Unit) =
         hookMethods(className, methodName, Integer.TYPE, callback)
@@ -73,7 +73,7 @@ object DisableCleaner : BaseHook() {
             .forEach { method ->
                 hookMethod(method, object : IMethodHook {
                     override fun before(param: HookParam) {
-                        val args = param.getArgs()
+                        val args = param.args
                         if (args.size < 3) return
                         // The third parameter is the last-trim cutoff on both known signatures.
                         args[2] = when (args[2]) {
